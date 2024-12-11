@@ -8,6 +8,7 @@ build
 MANIFEST
 .pytest_cache
 __pycache__
+hash.json
 tmp/
 .env
 .venv*/
