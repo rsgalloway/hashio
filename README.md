@@ -6,10 +6,9 @@ Custom file and directory checksum tool.
 ## Features
 
 - multiple hash algos: c4, md5, sha256, sha512, xxh64
-- multiple export options (Default .json)
 - recursively runs checksums on files in directory trees
 - ignores predefined file name patterns
-- optionally caches results for better performance
+- caches results for better performance
 
 ## Installation
 
