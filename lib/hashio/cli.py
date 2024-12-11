@@ -130,11 +130,15 @@ def main():
         return 0
 
     if not get_encoder_class(args.algo):
-        print("unsupported hashing algorithm: {}".format(args.algo))
+        print(f"unsupported hash algorithm: {args.algo}")
         return 2
 
     worker = HashWorker(
-        args.path, args.outfile, procs=args.procs, start=args.start, algo=args.algo
+        args.path,
+        args.outfile,
+        procs=args.procs,
+        start=args.start,
+        algo=args.algo,
     )
 
     try:
@@ -146,7 +150,7 @@ def main():
         return 2
 
     finally:
-        logger.debug("done in {} seconds".format(worker.total_time))
+        logger.debug(f"done in {worker.total_time} seconds")
 
     return 0
 

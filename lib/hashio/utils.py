@@ -36,11 +36,11 @@ import os
 import re
 import fnmatch
 
-from hashio.config import IGNORABLE
+from hashio import config
 
 # make a regex that matches any patterns in IGNORABLE
 ALL_IGNORABLE = re.compile(
-    "(" + ")|(".join([fnmatch.translate(i) for i in IGNORABLE]) + ")"
+    "(" + ")|(".join([fnmatch.translate(i) for i in config.IGNORABLE]) + ")"
 )
 
 # work in 64KB chunks to limit mem usage when reading
@@ -66,7 +66,16 @@ def get_metadata(path):
 
 
 def is_ignorable(path):
-    """Returns True if path is ignorable."""
+    """Returns True if path is ignorable. Checks path against patterns
+    in the ignorables list, as well as dot files.
+
+    :param path: file system path
+    :returns: True if filename matches pattern in ignorables list
+    """
+
+    if path.startswith("."):
+        return True
+
     return re.search(ALL_IGNORABLE, path) is not None
 
 

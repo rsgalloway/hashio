@@ -158,7 +158,6 @@ class HashWorker:
     def wait_until_done(self):
         """Blocks main process until queue is empty."""
         while True:
-            logger.debug("[%s] queue: %s", str(self), self.queue.qsize())
             time.sleep(WAIT_TIME)
             if self.queue.qsize() <= 0:
                 break
@@ -167,7 +166,6 @@ class HashWorker:
     def main(worker):
         """Worker function that walks folders and adds data to the queue."""
         while True:
-            logger.debug("queue size: %s", worker.queue.qsize())
             try:
                 data = worker.queue.get(True, timeout=WAIT_TIME)
                 logger.debug("data %s", data)

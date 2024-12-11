@@ -35,6 +35,7 @@ Contains file export classes and functions.
 
 import os
 import json
+import threading
 import time
 
 from datetime import datetime
@@ -106,7 +107,6 @@ class JSONExporter(BaseExporter):
             print(err)
             return {}
 
-    # TODO: verify JSONExporter.write is thread safe
     def write(self, path, data):
         """Writes `data` to file indexed by `path`. The contents
         of the cache file should be data dicts indexed by unique
@@ -130,9 +130,14 @@ class JSONExporter(BaseExporter):
         # normalize the path relative to the output file path
         path = normalize_path(path, start=os.path.dirname(self.filepath))
 
-        # write json serialized data to output file
+        # write json serialized data to output file in a thread-safe manner
         with open(self.filepath, "a+") as f:
-            f.write('    "{0}": {1},\n'.format(path, json.dumps(data, indent=8)))
+            lock = threading.Lock()
+            lock.acquire()
+            try:
+                f.write('    "{0}": {1},\n'.format(path, json.dumps(data, indent=8)))
+            finally:
+                lock.release()
 
 
 class CacheExporter(JSONExporter):

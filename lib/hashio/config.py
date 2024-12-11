@@ -57,6 +57,7 @@ IGNORABLE = [
     "dist",
     "build",
     ".jetpart*",
+    "*.egg-info",
     "__pycache__",
     ".cache",
     ".DS_Store",
