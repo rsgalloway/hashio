@@ -109,7 +109,6 @@ def checksum_path(path, encoder, filetype="a", use_cache=True):
     if use_cache:
         cached_value = CacheExporter.find(path, encoder.name)
         if cached_value:
-            logger.debug("using cached value {}".format(path))
             return cached_value
     if os.path.isfile(path) and filetype in ("a", "f"):
         return checksum_file(path, encoder)
@@ -446,19 +445,19 @@ def dedupe_caches(target, source, algo=config.DEFAULT_ALGO):
 
     # nothing to check
     if not target or not source:
-        raise Exception("bad inputs: {0} {1}".format(target, source))
+        raise Exception(f"bad inputs: {target} {source}")
 
     # target and source should be unique
     if target == source:
-        raise Exception("identical inputs: {0} {1}".format(target, source))
+        raise Exception(f"identical inputs: {target} {source}")
 
     # target input does not exist
     if not os.path.exists(target):
-        raise Exception("target missing: {}".format(target))
+        raise Exception(f"target missing: {target}")
 
     # source input does not exist
     if not os.path.exists(source):
-        raise Exception("source missing: {}".format(source))
+        raise Exception(f"source missing: {source}")
 
     # if inputs are cache files
     return [(t, s) for t, s in dedupe_cache_gen(target, source, algo=algo)]
@@ -477,7 +476,7 @@ def verify_checksums(path):
     from hashio.exporter import get_exporter_class
 
     if not os.path.isfile(path):
-        raise Exception("file not found: {}".format(path))
+        raise Exception(f"file not found: {path}")
 
     ext = os.path.splitext(path)[-1]
     exporter_class = get_exporter_class(ext)
@@ -531,7 +530,6 @@ def verify_caches(source, other, algo=config.DEFAULT_ALGO):
 
     for path, metadata in data_source.items():
         found = False
-        logger.debug("checking {}".format(path))
         name = metadata.get("name")
         value = metadata.get(algo)
 
