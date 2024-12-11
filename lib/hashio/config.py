@@ -29,48 +29,48 @@
 # POSSIBILITY OF SUCH DAMAGE.
 #
 
+__doc__ = """
+Contains configs and settings.
+"""
+
 import os
+import logging
+import platform
 
-from setuptools import find_packages, setup
+# default output filename
+CACHE_FILENAME = "hash.json"
 
-here = os.path.abspath(os.path.dirname(__file__))
-with open(os.path.join(here, "README.md")) as f:
-    long_description = f.read()
+# the default hashing algorithm
+DEFAULT_ALGO = os.getenv("HASHIO_ALGO", "xxh64")
 
+# ignorable file patterns
+IGNORABLE = [
+    CACHE_FILENAME,
+    "*~",
+    "*.pyc",
+    "*.pyo",
+    "*.bak",
+    "*.swp",
+    "*.tmp",
+    ".git",
+    ".svn",
+    "dist",
+    "build",
+    ".jetpart*",
+    "__pycache__",
+    ".cache",
+    ".DS_Store",
+    "Thumbs.db",
+    "desktop.ini",
+    ".Trash*",
+    "lost_found",
+]
 
-setup(
-    name="hashio",
-    version="0.1.0",
-    description="Custom file and directory checksum tool",
-    long_description=long_description,
-    long_description_content_type="text/markdown",
-    author="Ryan Galloway",
-    author_email="ryan@rsgalloway.com",
-    url="http://github.com/rsgalloway/hashio",
-    license="BSD 3-Clause License",
-    classifiers=[
-        # How mature is this project? Common values are
-        #   3 - Alpha
-        #   4 - Beta
-        #   5 - Production/Stable
-        "Development Status :: 3 - Alpha",
-        "Intended Audience :: Developers",
-        "Topic :: Software Development :: Libraries",
-        "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.6",
-        "Programming Language :: Python :: 3.7",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-    ],
-    package_dir={"": "lib"},
-    packages=find_packages("lib"),
-    entry_points={
-        "console_scripts": [
-            "hashio=hashio.cli:main",
-        ],
-    },
-    python_requires=">=3.6",
-    zip_safe=False,
-)
+# logging level
+LOG_LEVEL = os.getenv("LOG_LEVEL", logging.INFO)
+
+# maximum number of search and hash processes to spawn
+MAX_PROCS = int(os.getenv("MAX_PROCS", 10))
+
+# cache the name of the platform (linux or windows)
+PLATFORM = platform.system().lower()

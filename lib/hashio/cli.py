@@ -30,7 +30,7 @@
 #
 
 __doc__ = """
-Command line interface for hashio.
+Contains command line interface for hashio.
 """
 
 import argparse
@@ -38,6 +38,11 @@ import os
 import sys
 
 from hashio import __version__
+from hashio import config
+from hashio.logger import logger
+from hashio.encoder import verify_caches, verify_checksums
+from hashio.encoder import get_encoder_class
+from hashio.worker import HashWorker
 
 
 def parse_args():
@@ -55,9 +60,47 @@ def parse_args():
         default=os.getcwd(),
     )
     parser.add_argument(
+        "-o",
+        "--outfile",
+        type=str,
+        metavar="OUTFILE",
+        help="write results to output OUTFILE",
+        default=config.CACHE_FILENAME,
+    )
+    parser.add_argument(
+        "--procs",
+        type=int,
+        metavar="PROCS",
+        help="max number of spawned processes to use",
+        default=config.MAX_PROCS,
+    )
+    parser.add_argument(
+        "--start",
+        type=str,
+        metavar="START",
+        help="starting directory for relative paths",
+        default=None,
+    )
+    parser.add_argument(
+        "--algo",
+        type=str,
+        metavar="ALGO",
+        help="hashing algorithm to use (default %s)" % config.DEFAULT_ALGO,
+        default=config.DEFAULT_ALGO,
+    )
+    parser.add_argument("--verbose", action="store_true", help="verbose output")
+    parser.add_argument(
         "--version",
         action="version",
         version="%(prog)s {version}".format(version=__version__),
+    )
+    group = parser.add_argument_group("verification")
+    group.add_argument(
+        "--verify",
+        type=str,
+        metavar="HASHFILE",
+        nargs="+",
+        help="verify checksums from a previously created hash.json file",
     )
 
     args = parser.parse_args()
@@ -67,7 +110,43 @@ def parse_args():
 def main():
     """Main thread."""
 
-    parse_args()
+    args = parse_args()
+
+    if args.verbose:
+        logger.setLevel(10)
+
+    if args.verify:
+        if len(args.verify) == 1:
+            for algo, value, miss in verify_checksums(args.verify[0]):
+                print("{0} {1}".format(algo, miss))
+        elif len(args.verify) == 2:
+            source = args.verify[0]
+            other = args.verify[1]
+            for algo, value, miss in verify_caches(source, other):
+                print("{0} {1}".format(value, miss))
+        else:
+            print("incorrect number of arguments for --verify")
+            return 2
+        return 0
+
+    if not get_encoder_class(args.algo):
+        print("unsupported hashing algorithm: {}".format(args.algo))
+        return 2
+
+    worker = HashWorker(
+        args.path, args.outfile, procs=args.procs, start=args.start, algo=args.algo
+    )
+
+    try:
+        worker.run()
+
+    except KeyboardInterrupt:
+        print("stopping...")
+        worker.stop()
+        return 2
+
+    finally:
+        logger.debug("done in {} seconds".format(worker.total_time))
 
     return 0
 
