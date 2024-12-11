@@ -20,11 +20,11 @@ $ pip install -U hashio
 
 ## Usage
 
-Checksum one or more files or directories using one or more hash
-algorithms (default is xxh64):
+Checksum one or more files or directories using one or more hash algorithms
+(default is xxh64):
 
 ```bash
-$ hashio <PATH> [--hash <ALGO>]
+$ hashio <PATH> [--algo <ALGO>]
 ```
 
 Recursively checksum and gather metadata all the files in a dir tree, and output
