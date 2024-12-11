@@ -44,6 +44,7 @@ from hashio import config
 from hashio.encoder import checksum_file, get_encoder_class
 from hashio.exporter import CacheExporter
 from hashio.logger import logger
+from hashio import utils
 from hashio.utils import is_ignorable, get_metadata, normalize_path
 
 # wait time in seconds to check for queue emptiness
@@ -65,10 +66,12 @@ class HashWorker:
         procs=config.MAX_PROCS,
         start=None,
         algo=config.DEFAULT_ALGO,
+        force=False,
     ):
         self.path = path
         self.outfile = outfile
         self.procs = procs
+        self.force = force
         self.start = start or os.path.relpath(path)
         self.encoder = get_encoder_class(algo)()
         self.exporter = CacheExporter(outfile)
@@ -103,17 +106,20 @@ class HashWorker:
         """
         directories = []
         nondirectories = []
-        if os.path.isdir(path):
-            for filename in os.listdir(path):
-                fullname = os.path.join(path, filename)
-                if os.path.isdir(fullname):
-                    directories.append(fullname)
-                else:
-                    nondirectories.append(fullname)
+        if self.force:
+            if os.path.isdir(path):
+                for filename in os.listdir(path):
+                    fullname = os.path.join(path, filename)
+                    if os.path.isdir(fullname):
+                        directories.append(fullname)
+                    else:
+                        nondirectories.append(fullname)
+            else:
+                nondirectories.append(path)
+            for filename in nondirectories:
+                self.add_hash_to_queue(filename)
         else:
-            nondirectories.append(path)
-        for filename in nondirectories:
-            if not is_ignorable(filename):
+            for filename in utils.walk(path, filetype="f"):
                 self.add_hash_to_queue(filename)
         return directories
 

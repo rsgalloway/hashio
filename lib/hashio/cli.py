@@ -88,6 +88,11 @@ def parse_args():
         help="hashing algorithm to use (default %s)" % config.DEFAULT_ALGO,
         default=config.DEFAULT_ALGO,
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="skip ignorables",
+    )
     parser.add_argument("--verbose", action="store_true", help="verbose output")
     parser.add_argument(
         "--version",
@@ -139,6 +144,7 @@ def main():
         procs=args.procs,
         start=args.start,
         algo=args.algo,
+        force=args.force,
     )
 
     try:

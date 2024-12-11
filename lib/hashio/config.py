@@ -56,6 +56,7 @@ IGNORABLE = [
     ".svn",
     "dist",
     "build",
+    "venv*",
     ".jetpart*",
     "*.egg-info",
     "__pycache__",
