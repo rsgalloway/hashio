@@ -1,10 +1,6 @@
 {
     "author": "ryan@rsg.io",
     "targets": {
-        "env": {
-            "source": "hashio.env",
-            "destination": "{DEPLOY_ROOT}/env/hashio.env"
-        },
         "bin": {
             "source": "bin/hashio",
             "destination": "{DEPLOY_ROOT}/bin/hashio"
@@ -12,6 +8,10 @@
         "bat": {
             "source": "bin/hashio.bat",
             "destination": "{DEPLOY_ROOT}/bin/hashio.bat"
+        },
+        "env": {
+            "source": "hashio.env",
+            "destination": "{DEPLOY_ROOT}/env/hashio.env"
         },
         "lib": {
             "source": "lib/hashio",
