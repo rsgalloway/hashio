@@ -34,4 +34,4 @@ Custom file and directory checksum tool.
 """
 
 __prog__ = "hashio"
-__version__ = "0.0.1"
+__version__ = "0.1.1"
