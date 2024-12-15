@@ -46,7 +46,7 @@ from hashio.utils import read_file, walk
 
 def bytes_to_long(data):
     """Converts a byte string to a long.
-    
+
     :param data: the byte string to convert.
     :return: the long value.
     """
