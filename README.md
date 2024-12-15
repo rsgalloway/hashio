@@ -42,3 +42,23 @@ available) or regenerated hash values if mtimes are missing or different:
 ```bash
 $ hashio --verify hash.json
 ```
+
+
+## Python API
+
+Generate a `hash.json` file for a given path (Default is the current working
+directory):
+
+```python
+from hashio.worker import HashWorker
+worker = HashWorker(path)
+worker.run()
+```
+
+Verify pre-generated checksums stored in a `hash.json` file:
+
+```python
+from hashio.encoder import verify_checksums
+for algo, value, miss in verify_checksums("hash.json"):
+    print("{0} {1}".format(algo, miss))
+```
