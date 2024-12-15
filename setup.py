@@ -40,7 +40,7 @@ with open(os.path.join(here, "README.md")) as f:
 
 setup(
     name="hashio",
-    version="0.1.2",
+    version="0.2.0",
     description="Custom file and directory checksum tool",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -53,7 +53,7 @@ setup(
         #   3 - Alpha
         #   4 - Beta
         #   5 - Production/Stable
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "Topic :: Software Development :: Libraries",
         "Programming Language :: Python :: 3",
@@ -72,6 +72,7 @@ setup(
         ],
     },
     install_requires=[
+        "envstack==0.7.2",
         "xxhash==3.5.0",
     ],
     python_requires=">=3.6",

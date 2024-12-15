@@ -39,9 +39,9 @@ from hashio import __prog__
 from hashio.config import LOG_LEVEL
 
 logger = logging.getLogger(__prog__)
-logger.setLevel(int(LOG_LEVEL))
+logger.setLevel(LOG_LEVEL)
 
-# default handler
+# add stream handler
 stream_handler = logging.StreamHandler()
 formatter = logging.Formatter("%(asctime)15s : %(message)s")
 stream_handler.setFormatter(formatter)

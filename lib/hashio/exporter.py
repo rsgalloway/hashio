@@ -297,6 +297,7 @@ def build_exporter_map():
 
     Note: exporter ext values must be unique.
     """
+    global EXPORTER_MAP
     for cls in all_exporter_classes(BaseExporter):
         EXPORTER_MAP[cls.ext] = cls
 
