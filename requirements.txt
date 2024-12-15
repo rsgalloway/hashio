@@ -1,2 +1,2 @@
-envstack==0.7.1
+envstack==0.7.2
 xxhash==3.5.0
