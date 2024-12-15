@@ -33,8 +33,8 @@ __doc__ = """
 Contains configs and settings.
 """
 
-import os
 import logging
+import os
 import platform
 
 # default output filename
@@ -70,6 +70,9 @@ IGNORABLE = [
 
 # logging level
 LOG_LEVEL = os.getenv("LOG_LEVEL", logging.INFO)
+
+# work in 64KB chunks to limit mem usage when reading large files
+BUF_SIZE = int(os.getenv("BUF_SIZE", 65536))
 
 # maximum number of search and hash processes to spawn
 MAX_PROCS = int(os.getenv("MAX_PROCS", 10))

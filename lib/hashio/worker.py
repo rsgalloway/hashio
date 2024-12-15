@@ -33,19 +33,17 @@ __doc__ = """
 Contains hash worker class and functions.
 """
 
-import os
-import time
-import queue
-
 import multiprocessing
-from multiprocessing import Lock, Queue, Pool
+import os
+import queue
+import time
+from multiprocessing import Lock, Pool, Queue
 
-from hashio import config
+from hashio import config, utils
 from hashio.encoder import checksum_file, get_encoder_class
 from hashio.exporter import CacheExporter
 from hashio.logger import logger
-from hashio import utils
-from hashio.utils import is_ignorable, get_metadata, normalize_path
+from hashio.utils import get_metadata, normalize_path
 
 # wait time in seconds to check for queue emptiness
 WAIT_TIME = 0.25
@@ -61,7 +59,7 @@ class HashWorker:
 
     def __init__(
         self,
-        path,
+        path=os.getcwd(),
         outfile=config.CACHE_FILENAME,
         procs=config.MAX_PROCS,
         start=None,

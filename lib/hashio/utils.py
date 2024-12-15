@@ -32,9 +32,9 @@ __doc__ = """
 Contains helper classes and functions.
 """
 
+import fnmatch
 import os
 import re
-import fnmatch
 
 from hashio import config
 
@@ -42,10 +42,6 @@ from hashio import config
 ALL_IGNORABLE = re.compile(
     "(" + ")|(".join([fnmatch.translate(i) for i in config.IGNORABLE]) + ")"
 )
-
-# work in 64KB chunks to limit mem usage when reading
-# large files
-BUF_SIZE = 65536
 
 
 def get_metadata(path):
@@ -106,7 +102,7 @@ def read_file(filepath):
     """File reader data generator."""
     with open(filepath, "rb") as f:
         while True:
-            data = f.read(BUF_SIZE)
+            data = f.read(config.BUF_SIZE)
             if not data:
                 break
             yield data

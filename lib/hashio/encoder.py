@@ -33,9 +33,10 @@ __doc__ = """
 Contains checksum encoder classes and functions.
 """
 
-import os
-import xxhash
 import hashlib
+import os
+
+import xxhash
 
 from hashio import config
 from hashio.exporter import CacheExporter
@@ -44,6 +45,11 @@ from hashio.utils import read_file, walk
 
 
 def bytes_to_long(data):
+    """Converts a byte string to a long.
+
+    :param data: the byte string to convert.
+    :return: the long value.
+    """
     result = 0
     for b in data:
         result = result * 256 + ord(b)
@@ -51,6 +57,11 @@ def bytes_to_long(data):
 
 
 def long_to_bytes(data):
+    """Converts a long to a byte string.
+
+    :param data: the long value to convert.
+    :return: the byte string.
+    """
     encoded = []
     while data > 0:
         data, mod = divmod(data, 256)
@@ -60,7 +71,6 @@ def long_to_bytes(data):
 
 def checksum_file(path, encoder):
     """Creates a checksum for a given filepath and encoder.
-
     Note: resets encoder, existing data will be lost.
 
     :param path: the path to the filepath being hashed

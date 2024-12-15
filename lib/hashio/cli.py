@@ -37,11 +37,9 @@ import argparse
 import os
 import sys
 
-from hashio import __version__
-from hashio import config
+from hashio import __version__, config
+from hashio.encoder import get_encoder_class, verify_caches, verify_checksums
 from hashio.logger import logger
-from hashio.encoder import verify_caches, verify_checksums
-from hashio.encoder import get_encoder_class
 from hashio.worker import HashWorker
 
 
