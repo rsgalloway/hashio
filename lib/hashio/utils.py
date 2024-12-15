@@ -32,9 +32,9 @@ __doc__ = """
 Contains helper classes and functions.
 """
 
+import fnmatch
 import os
 import re
-import fnmatch
 
 from hashio import config
 

@@ -33,8 +33,8 @@ __doc__ = """
 Contains configs and settings.
 """
 
-import os
 import logging
+import os
 import platform
 
 # default output filename

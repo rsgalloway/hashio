@@ -33,11 +33,10 @@ __doc__ = """
 Contains file export classes and functions.
 """
 
-import os
 import json
+import os
 import threading
 import time
-
 from datetime import datetime
 
 from hashio import config
@@ -66,8 +65,8 @@ class BaseExporter:
 
 
 class JSONExporter(BaseExporter):
-    """JSON streaming exporter. Opens a filepointer to a .json
-    output file which data can be written to."""
+    """JSON streaming exporter. Opens a filepointer to a .json output file which
+    data can be written to."""
 
     ext = ".json"
 
@@ -78,8 +77,8 @@ class JSONExporter(BaseExporter):
         fp.close()
 
     def close(self):
-        """Closes file pointer to output file, and writes final
-        closing }. Do not call until writing data is completed.
+        """Closes file pointer to output file, and writes final closing }.
+        Do not call until writing data is completed.
         """
         if config.PLATFORM == "windows":
             offset = -3  # \n\r
@@ -94,8 +93,8 @@ class JSONExporter(BaseExporter):
 
     @classmethod
     def read(self, filepath):
-        """Reads and returns the json content at a given filepath,
-        or {} if there is an error.
+        """Reads and returns the json content at a given filepath, or {} if
+        there is an error.
         """
         try:
             fp = open(filepath)
@@ -108,9 +107,8 @@ class JSONExporter(BaseExporter):
             return {}
 
     def write(self, path, data):
-        """Writes `data` to file indexed by `path`. The contents
-        of the cache file should be data dicts indexed by unique
-        paths.
+        """Writes `data` to file indexed by `path`. The contents of the cache
+        file should be data dicts indexed by unique paths.
 
             {
                 path1: {data1},
@@ -118,8 +116,8 @@ class JSONExporter(BaseExporter):
                 pathN: {dataN}
             }
 
-        Calling write with the same path will overwrite the data
-        in the output file.
+        Calling write with the same path will overwrite the data in the output
+        file.
 
         The closing } will be written out when close() is called.
 
@@ -141,9 +139,9 @@ class JSONExporter(BaseExporter):
 
 
 class CacheExporter(JSONExporter):
-    """Cache data exporter. Hash caches are files that contain
-    serialized hash and filesystem metadata. All paths in a cache
-    file are relative to the cache file itself.
+    """Cache data exporter. Hash caches are files that contain serialized hash
+    and filesystem metadata. All paths in a cache file are relative to the cache
+    file itself.
     """
 
     ext = ".json"
@@ -155,10 +153,9 @@ class CacheExporter(JSONExporter):
     def get_cache(cls, path):
         """Returns the cache filename for a given path.
 
-        The cache file will be written to the directory containing
-        the path. For example if the path is `/a/b/c/d` then the cache
-        will be written to `/a/b/c/hash.json` and the path reference
-        in the cache will be `d`.
+        The cache file will be written to the directory containing the path. For
+        example if the path is `/a/b/c/d` then the cache will be written to
+        `/a/b/c/hash.json` and the path reference in the cache will be `d`.
 
         :param path: path being hashed (file or dir)
         """
@@ -167,8 +164,8 @@ class CacheExporter(JSONExporter):
 
     @classmethod
     def find(cls, path, key):
-        """Searches for path in cached data, and compares
-        mtimes for a given path.
+        """Searches for path in cached data, and compares mtimes for a given
+        path.
 
         :param path: filesystem path
         :param key: key name of cached value to return
