@@ -43,6 +43,16 @@ available) or regenerated hash values if mtimes are missing or different:
 $ hashio --verify hash.json
 ```
 
+## Environments
+
+You modifiy settings in the environment stack file `hashio.env`, or create a new
+environment stack:
+
+```bash
+$ cp hashio.env debug.env
+$ vi debug.env  # make edits
+$ ./debug.env -- hashio
+```
 
 ## Python API
 
