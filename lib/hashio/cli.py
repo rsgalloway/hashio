@@ -77,7 +77,7 @@ def parse_args():
         type=str,
         metavar="START",
         help="starting directory for relative paths",
-        default=None,
+        default=os.getcwd(),
     )
     parser.add_argument(
         "--algo",
