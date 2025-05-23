@@ -57,7 +57,7 @@ class BaseExporter:
         raise NotImplementedError
 
     @classmethod
-    def read(self, filepath: str):
+    def read(cls, filepath: str):
         raise NotImplementedError
 
     def write(self):
