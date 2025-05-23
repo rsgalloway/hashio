@@ -52,7 +52,7 @@ def get_metadata(path: str):
     stats = os.stat(path)
     path_type = "file" if os.path.isfile(path) else "dir"
     return {
-        "name": os.path.basename(os.path.abspath(path)),
+        "name": os.path.basename(path),
         "atime": stats.st_atime,
         "ctime": stats.st_ctime,
         "mtime": stats.st_mtime,
