@@ -83,20 +83,26 @@ class HashWorker:
         p_name = multiprocessing.current_process().name
         return f"<HashWorker {p_name}>"
 
-    def add_to_queue(self, data):
+    def add_to_queue(self, data: dict):
         """Adds task data to the queue."""
         with self.lock:
             self.queue.put(data)
 
-    def add_path_to_queue(self, path):
-        """Add a directory to the search queue."""
+    def add_path_to_queue(self, path: str):
+        """Add a directory to the search queue.
+
+        :param path: search path
+        """
         self.add_to_queue({"task": "search", "path": path})
 
-    def add_hash_to_queue(self, path):
-        """Add a filename to the hash queue."""
+    def add_hash_to_queue(self, path: str):
+        """Add a filename to the hash queue.
+
+        :param path: file path
+        """
         self.add_to_queue({"task": "hash", "path": path})
 
-    def explore_path(self, path):
+    def explore_path(self, path: str):
         """Walks a dir and adds files to hash queue, and returns a list of
         found subdirs to add to the search queue.
 
@@ -121,8 +127,11 @@ class HashWorker:
                 self.add_hash_to_queue(filename)
         return directories
 
-    def do_hash(self, path):
-        """Checksums a given path and exports metadata."""
+    def do_hash(self, path: str):
+        """Checksums a given path and exports metadata.
+
+        :param path: file path
+        """
         value = checksum_file(path, self.encoder)
         npath = normalize_path(path, start=self.start)
         metadata = get_metadata(path)
