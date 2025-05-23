@@ -286,6 +286,7 @@ def all_exporter_classes(cls: BaseExporter):
     )
 
 
+# maps of all exporter classes to their extensions
 EXPORTER_MAP = {}
 
 
@@ -299,6 +300,7 @@ def build_exporter_map():
         EXPORTER_MAP[cls.ext] = cls
 
 
+# build the exporter map on import
 build_exporter_map()
 
 
