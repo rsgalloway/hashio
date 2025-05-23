@@ -50,14 +50,14 @@ class FileExistsError(Exception):
 class BaseExporter:
     """Exporter base class."""
 
-    def __init__(self, filepath):
+    def __init__(self, filepath: str):
         self.filepath = filepath
 
     def close(self):
         raise NotImplementedError
 
     @classmethod
-    def read(self, filepath):
+    def read(self, filepath: str):
         raise NotImplementedError
 
     def write(self):
@@ -70,7 +70,7 @@ class JSONExporter(BaseExporter):
 
     ext = ".json"
 
-    def __init__(self, filepath):
+    def __init__(self, filepath: str):
         super(JSONExporter, self).__init__(filepath)
         fp = open(self.filepath, "w")
         fp.write("{\n")
@@ -92,7 +92,7 @@ class JSONExporter(BaseExporter):
         fp.close()
 
     @classmethod
-    def read(self, filepath):
+    def read(self, filepath: str):
         """Reads and returns the json content at a given filepath, or {} if
         there is an error.
         """
@@ -106,7 +106,7 @@ class JSONExporter(BaseExporter):
             print(err)
             return {}
 
-    def write(self, path, data):
+    def write(self, path: str, data: dict):
         """Writes `data` to file indexed by `path`. The contents of the cache
         file should be data dicts indexed by unique paths.
 
@@ -146,11 +146,11 @@ class CacheExporter(JSONExporter):
 
     ext = ".json"
 
-    def __init__(self, filepath):
+    def __init__(self, filepath: str):
         super(CacheExporter, self).__init__(filepath)
 
     @classmethod
-    def get_cache(cls, path):
+    def get_cache(cls, path: str):
         """Returns the cache filename for a given path.
 
         The cache file will be written to the directory containing the path. For
@@ -163,7 +163,7 @@ class CacheExporter(JSONExporter):
         return os.path.join(dirname, config.CACHE_FILENAME)
 
     @classmethod
-    def find(cls, path, key):
+    def find(cls, path: str, key: str):
         """Searches for path in cached data, and compares mtimes for a given
         path.
 
@@ -210,7 +210,7 @@ class MHLExporter(BaseExporter):
     # MHL timestamp format
     time_format = "%Y-%m-%dT%H:%M:%SZ"
 
-    def __init__(self, filepath):
+    def __init__(self, filepath: str):
         super(MHLExporter, self).__init__(filepath)
         fp = open(self.filepath, "w")
         fp.write(
@@ -224,13 +224,13 @@ class MHLExporter(BaseExporter):
         fp.write("</hashlist>\n")
         fp.close()
 
-    def timestamp(self, ts=None):
+    def timestamp(self, ts: int = None):
         """Converts timestamp to MHL supported time format."""
         if ts is None:
             ts = int(time.time())
         return datetime.utcfromtimestamp(ts).strftime(self.time_format)
 
-    def write(self, path, data):
+    def write(self, path: str, data: dict):
         """Writes out data as MHL-specified XML data.
 
         Example minimum hash element:
@@ -279,7 +279,7 @@ class MHLExporter(BaseExporter):
             f.write((etree.tostring(root, pretty_print=True).decode("utf-8")))
 
 
-def all_exporter_classes(cls):
+def all_exporter_classes(cls: BaseExporter):
     """Returns all exporter classes."""
     return set(cls.__subclasses__()).union(
         [s for c in cls.__subclasses__() for s in all_exporter_classes(c)]
@@ -302,7 +302,7 @@ def build_exporter_map():
 build_exporter_map()
 
 
-def get_exporter_class(ext):
+def get_exporter_class(ext: str):
     """Returns exporter class matching ext."""
     for cls in all_exporter_classes(BaseExporter):
         if cls.ext == ext:
