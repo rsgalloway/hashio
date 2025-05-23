@@ -72,7 +72,7 @@ setup(
         ],
     },
     install_requires=[
-        "envstack>=0.8.",
+        "envstack>=0.8.3",
         "xxhash==3.5.0",
     ],
     python_requires=">=3.6",
