@@ -38,7 +38,7 @@ import os
 import platform
 
 # default output filename
-CACHE_FILENAME = "hash.json"
+CACHE_FILENAME = os.getenv("HASHIO_OUTFILE", "hash.json")
 
 # the default hashing algorithm
 DEFAULT_ALGO = os.getenv("HASHIO_ALGO", "xxh64")
