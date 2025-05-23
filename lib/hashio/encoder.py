@@ -510,7 +510,7 @@ def dedupe_paths(paths: List[str], algo=config.DEFAULT_ALGO):
 def dedupe_caches(target: str, source: str, algo: str = config.DEFAULT_ALGO):
     """Finds duplicate pairs in a given set of target and source cache files.
 
-    Note: this may be faster than `dedupe_paths`, but it will miss potental
+    Note: this may be faster than `dedupe_paths`, but it will miss potential
     matches if all files are not in the target cache file.
 
     See `dedupe_cache_gen` for more info.
