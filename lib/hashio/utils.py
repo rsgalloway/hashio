@@ -45,7 +45,7 @@ ALL_IGNORABLE = re.compile(
 
 
 def get_metadata(path: str):
-    """Returns dict of file metadata.
+    """Returns dict of file metadata: atime, ctime, mtime, ino, dev, size,
 
     Note: disk usage for directories not accurate.
     """
@@ -56,7 +56,8 @@ def get_metadata(path: str):
         "atime": stats.st_atime,
         "ctime": stats.st_ctime,
         "mtime": stats.st_mtime,
-        "inode": stats.st_ino,
+        "ino": stats.st_ino,
+        "dev": stats.st_dev,
         "size": stats.st_size,
         "type": path_type,
     }
