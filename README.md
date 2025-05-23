@@ -1,11 +1,11 @@
 hashio
 ======
 
-Custom file and directory checksum tool.
+Custom file and directory checksum and verification tool.
 
 ## Features
 
-- multiple hash algos: c4, md5, sha256, sha512, xxh64
+- multiple hash algos: c4, crc32, md5, sha256, sha512, xxh64
 - recursively runs checksums on files in directory trees
 - ignores predefined file name patterns
 - caches results for better performance
@@ -28,7 +28,7 @@ $ hashio <PATH> [--algo <ALGO>]
 ```
 
 Recursively checksum and gather metadata all the files in a dir tree, and output
-results to a JSON file:
+results to a hash.json file:
 
 ```bash
 $ hashio <DIR>
@@ -40,12 +40,13 @@ Verify paths in previously generated JSON file by comparing stored mtimes (if
 available) or regenerated hash values if mtimes are missing or different:
 
 ```bash
-$ hashio --verify hash.json
+$ hashio --verify [HASHFILE]
 ```
 
 ## Environments
 
-You modifiy settings in the environment stack file `hashio.env`, or create a new
+You modifiy settings in the `hashio.env`
+[envstack](https://github.com/rsgalloway/envstack) file, or create a new
 environment stack:
 
 ```bash
@@ -53,6 +54,17 @@ $ cp hashio.env debug.env
 $ vi debug.env  # make edits
 $ ./debug.env -- hashio
 ```
+
+Default config settings are in the config.py module. The following environment
+variables are supported:
+
+| Variable        | Description |
+|-----------------|-------------|
+| $BUF_SIZE       | chunk size in bytes when reading files |
+| $HASHIO_ALGO    | default hashing algorithm to use |
+| $HASHIO_OUTFILE | default output location of hash file |
+| $LOG_LEVEL      | logging level to use (DEBUG, INFO, etc) |
+| $MAX_PROCS      | max number hash processes to spawn |
 
 ## Python API
 
