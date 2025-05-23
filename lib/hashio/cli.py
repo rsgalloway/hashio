@@ -44,7 +44,7 @@ from hashio.worker import HashWorker
 
 
 def parse_args():
-    """sys.argv parser, returns args."""
+    """Parse command line arguments."""
 
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
@@ -91,7 +91,12 @@ def parse_args():
         action="store_true",
         help="skip ignorables",
     )
-    parser.add_argument("--verbose", action="store_true", help="verbose output")
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="verbose output",
+    )
     parser.add_argument(
         "--version",
         action="version",
@@ -102,8 +107,8 @@ def parse_args():
         "--verify",
         type=str,
         metavar="HASHFILE",
-        nargs="+",
-        help="verify checksums from a previously created hash.json file",
+        nargs="*",
+        help="verify checksums from a previously created hash file",
     )
 
     args = parser.parse_args()
@@ -115,11 +120,16 @@ def main():
 
     args = parse_args()
 
+    # verbose logging output
     if args.verbose:
         logger.setLevel(10)
 
-    if args.verify:
-        if len(args.verify) == 1:
+    # hash verification
+    if args.verify is not None:
+        if len(args.verify) == 0:
+            for algo, value, miss in verify_checksums(config.CACHE_FILENAME):
+                print("{0} {1}".format(algo, miss))
+        elif len(args.verify) == 1:
             for algo, value, miss in verify_checksums(args.verify[0]):
                 print("{0} {1}".format(algo, miss))
         elif len(args.verify) == 2:
@@ -136,6 +146,7 @@ def main():
         print(f"unsupported hash algorithm: {args.algo}")
         return 2
 
+    # create hash worker and generate checksums
     worker = HashWorker(
         args.path,
         args.outfile,
@@ -154,7 +165,7 @@ def main():
         return 2
 
     finally:
-        logger.debug(f"done in {worker.total_time} seconds")
+        logger.debug("done in %s seconds", worker.total_time)
 
     return 0
 
