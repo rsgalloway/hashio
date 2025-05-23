@@ -277,10 +277,40 @@ class TestEncoders(unittest.TestCase):
         from hashio.encoder import get_encoder_class
 
         self.assertEqual(get_encoder_class("c4"), hashio.encoder.C4Encoder)
+        self.assertEqual(get_encoder_class("crc32"), hashio.encoder.CRC32Encoder)
         self.assertEqual(get_encoder_class("md5"), hashio.encoder.MD5Encoder)
         self.assertEqual(get_encoder_class("sha256"), hashio.encoder.SHA256Encoder)
         self.assertEqual(get_encoder_class("sha512"), hashio.encoder.SHA512Encoder)
         self.assertEqual(get_encoder_class("xxh64"), hashio.encoder.XXH64Encoder)
+
+    def test_crc32_encoder(self):
+        import zlib
+        from hashio.encoder import CRC32Encoder
+        from hashio.encoder import checksum_file
+
+        h = zlib.crc32(b"some data")
+        h_hex = format(h & 0xFFFFFFFF, "08x")
+
+        encoder = CRC32Encoder()
+        self.assertEqual(encoder.name, "crc32")
+
+        encoder.update(b"some data")
+        self.assertEqual(h_hex, encoder.hexdigest())
+
+        encoder.update(b"more data  ")
+        self.assertNotEqual(h_hex, encoder.hexdigest())
+
+        # hash this file using standard lib
+        fp = open(__file__, "rb")
+        h = zlib.crc32(fp.read())
+        h_hex = format(h & 0xFFFFFFFF, "08x")
+        fp.close()
+
+        # test standard lib against CRC32Encoder
+        self.assertEqual(h_hex, checksum_file(__file__, encoder))
+
+        # confirm rehashing results in same hash
+        self.assertEqual(h_hex, checksum_file(__file__, encoder))
 
     def test_md5_encoder(self):
         import hashlib
