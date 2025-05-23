@@ -36,6 +36,7 @@ Contains checksum encoder classes and functions.
 import hashlib
 import os
 import xxhash
+import zlib
 from typing import List
 
 from hashio import config
@@ -159,6 +160,38 @@ def checksum_gen(
                 yield (algo, value, path)
 
 
+class CRC32(object):
+    """Simple implementation of CRC32 checksum class."""
+
+    def __init__(self):
+        self._initial = 0
+        self._crc = self._initial
+
+    def update(self, data: bytes):
+        """Update the CRC32 checksum with the given data."""
+        self._crc = zlib.crc32(data, self._crc)
+        return self  # for chaining
+
+    def digest(self):
+        """Return the CRC32 checksum as a 4-byte binary string."""
+        return (self._crc & 0xFFFFFFFF).to_bytes(4, byteorder="big")
+
+    def hexdigest(self):
+        """Return 8-character lowercase hex string."""
+        return format(self._crc & 0xFFFFFFFF, "08x")
+
+    def copy(self):
+        """Return a copy of the CRC32 object."""
+        new = CRC32()
+        new._crc = self._crc
+        return new
+
+    def reset(self):
+        """Reset the CRC32 checksum to its initial value."""
+        self._crc = self._initial
+        return self
+
+
 class Encoder(object):
     """Checksum encoder base class."""
 
@@ -242,6 +275,16 @@ class XXH3_128Encoder(Encoder):
     def __init__(self):
         super(XXH3_128Encoder, self).__init__()
         self.hash = xxhash.xxh3_128()
+
+
+class CRC32Encoder(Encoder):
+    """CRC32 Encoder class."""
+
+    name = "crc32"
+
+    def __init__(self):
+        super(CRC32Encoder, self).__init__()
+        self.hash = CRC32()
 
 
 class C4Encoder(SHA512Encoder):
