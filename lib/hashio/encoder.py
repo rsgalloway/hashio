@@ -351,7 +351,7 @@ def get_encoder_class(name: str):
 
 
 def dedupe_paths_gen(paths: List[str], algo: str = config.DEFAULT_ALGO):
-    """Generator that takes as input one or more directores or a list of files,
+    """Generator that takes as input one or more directories or a list of files,
     generates checksums, and yields a list of duplicates.
 
       Step 1: Walk paths and checksum all files.
