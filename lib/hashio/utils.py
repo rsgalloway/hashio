@@ -44,7 +44,7 @@ ALL_IGNORABLE = re.compile(
 )
 
 
-def get_metadata(path):
+def get_metadata(path: str):
     """Returns dict of file metadata.
 
     Note: disk usage for directories not accurate.
@@ -62,7 +62,7 @@ def get_metadata(path):
     }
 
 
-def is_ignorable(path):
+def is_ignorable(path: str):
     """Returns True if path is ignorable. Checks path against patterns
     in the ignorables list, as well as dot files.
 
@@ -76,31 +76,48 @@ def is_ignorable(path):
     return re.search(ALL_IGNORABLE, path) is not None
 
 
-def is_subpath(filepath, directory):
-    """Returns True if the common prefix of both is equal
-    to `directory`, e.g. if filepath is /a/b/c/d.rst and
-    directory is /a/b the common prefix is /a/b.
+def is_subpath(filepath: str, directory: str):
+    """Returns True if the common prefix of both is equal to `directory`, e.g.
+    if filepath is /a/b/c/d.rst and directory is /a/b the common prefix is /a/b.
+
+    :param filepath: file system path
+    :param directory: file system path
+    :returns: True if filepath is a subpath of directory
     """
     d = os.path.join(os.path.realpath(directory), "")
     f = os.path.realpath(filepath)
     return os.path.commonprefix([f, d]) == d
 
 
-def normalize_path(path, start=os.getcwd()):
-    """Returns a normalized relative path."""
+def normalize_path(path: str, start: str = os.getcwd()):
+    """Returns a normalized relative path.
+
+    :param path: file system path
+    :param start: path to start from
+    :returns: normalized path
+    """
     npath = os.path.normpath(path)
     if start is None or is_subpath(path, start):
         return os.path.relpath(npath, start=start).replace("\\", "/")
     return os.path.abspath(npath).replace("\\", "/")
 
 
-def paths_are_equal(a, b):
-    """Returns True if path a is the same as path b."""
+def paths_are_equal(a: str, b: str):
+    """Returns True if path a is the same as path b.
+
+    :param a: file system path
+    :param b: file system path
+    :returns: True if paths are equal
+    """
     return normalize_path(a) == normalize_path(b)
 
 
-def read_file(filepath):
-    """File reader data generator."""
+def read_file(filepath: str):
+    """File reader data generator.
+
+    :param filepath: file to read
+    :returns: file data in chunks
+    """
     with open(filepath, "rb") as f:
         while True:
             data = f.read(config.BUF_SIZE)
@@ -109,9 +126,9 @@ def read_file(filepath):
             yield data
 
 
-def walk(path, filetype="f"):
-    """Generator that yields file and dir paths that
-    are not excluded by the ignorable list in config.
+def walk(path: str, filetype: str = "f"):
+    """Generator that yields file and dir paths that are not excluded by the
+    ignorable list in config.
 
     :param path: the path to the folder being hashed
     :param filetype: file (f), dir (d) or all (a)

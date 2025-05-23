@@ -104,7 +104,9 @@ def checksum_folder(path: str, encoder: object):
     return value
 
 
-def checksum_path(path, encoder, filetype="a", use_cache=True):
+def checksum_path(
+    path: str, encoder: object, filetype: str = "a", use_cache: bool = True
+):
     """Returns a checksum of for a given path, encoder and filetype.
 
     Note: resets encoder, existing data will be lost.
@@ -164,8 +166,7 @@ class Encoder(object):
         self.hash = hashlib.sha512()
 
     @classmethod
-    def get(cls, name):
-        # TODO: cache this map
+    def get(cls, name: str):
         ENCODER_MAP = dict([(sc.name, sc) for sc in Encoder.__subclasses__()])
         encoder_class = ENCODER_MAP.get(name)
         try:
@@ -281,6 +282,7 @@ def all_encoder_classes(cls: Encoder):
     )
 
 
+# map of encoder names to encoder classes
 ENCODER_MAP = {}
 
 
