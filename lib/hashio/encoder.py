@@ -351,7 +351,7 @@ def get_encoder_class(name: str):
 
 
 def dedupe_paths_gen(paths: List[str], algo: str = config.DEFAULT_ALGO):
-    """Generator that takes as input one or more directores or a list of files,
+    """Generator that takes as input one or more directories or a list of files,
     generates checksums, and yields a list of duplicates.
 
       Step 1: Walk paths and checksum all files.
@@ -510,7 +510,7 @@ def dedupe_paths(paths: List[str], algo=config.DEFAULT_ALGO):
 def dedupe_caches(target: str, source: str, algo: str = config.DEFAULT_ALGO):
     """Finds duplicate pairs in a given set of target and source cache files.
 
-    Note: this may be faster than `dedupe_paths`, but it will miss potental
+    Note: this may be faster than `dedupe_paths`, but it will miss potential
     matches if all files are not in the target cache file.
 
     See `dedupe_cache_gen` for more info.
