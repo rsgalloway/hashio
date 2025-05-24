@@ -35,11 +35,11 @@ Contains file export classes and functions.
 
 import json
 import os
-import threading
 import time
 from datetime import datetime
 
 from hashio import config
+from hashio.logger import logger
 from hashio.utils import normalize_path
 
 
@@ -115,7 +115,7 @@ class JSONExporter(BaseExporter):
 
     def write(self, path: str, data: dict):
         """
-        Writes `data` to file indexed by `path`. The contents of the cache file
+        Writes `data` to file indexed by `path`. The contents of the hash file
         should be data dicts indexed by unique paths.
 
             {
@@ -133,14 +133,11 @@ class JSONExporter(BaseExporter):
         :param data: the data to write
         """
 
-        # write json serialized data to hash file in a thread-safe manner
         with open(self.filepath, "a+") as f:
-            lock = threading.Lock()
-            lock.acquire()
             try:
                 f.write('    "{0}": {1},\n'.format(path, json.dumps(data, indent=8)))
-            finally:
-                lock.release()
+            except Exception as err:
+                logger.warning(f"Write error: {err}")
 
 
 class CacheExporter(JSONExporter):
