@@ -142,6 +142,10 @@ def main():
             return 2
         return 0
 
+    if not os.path.exists(args.path):
+        print(f"path does not exist: {args.path}")
+        return 2
+
     if not get_encoder_class(args.algo):
         print(f"unsupported hash algorithm: {args.algo}")
         return 2
