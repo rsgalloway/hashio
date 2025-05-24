@@ -566,7 +566,6 @@ def verify_checksums(path: str):
 
         # iterate over all the hash algos...
         for algo in ENCODER_MAP.keys():
-            # .. look for the algo in the metadata
             if algo not in metadata.keys():
                 continue
 
@@ -580,8 +579,8 @@ def verify_checksums(path: str):
 
             # if mtimes don't match, re-hash the file
             logger.debug("mtime miss on %s", filepath)
+            old_value = metadata.get(algo)
             encoder = ENCODER_MAP.get(algo)()
-            old_value = metadata[algo]
             new_value = checksum_path(filepath, encoder)
 
             # hash values don't match, file must have changed
