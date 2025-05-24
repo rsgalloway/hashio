@@ -124,19 +124,20 @@ class HashWorker:
         self.outfile = outfile
         self.procs = procs
         self.force = force
-        self.start = start or os.path.relpath(path)
-        self.encoder = get_encoder_class(algo)()
-        self.exporter = get_exporter_class(os.path.splitext(outfile)[1])(outfile)
-        self.queue = Queue()  # queue for tasks
-        self.result_queue = Queue()  # queue for results
-        self.writer = Process(
-            target=writer_process, args=(self.result_queue, self.exporter)
-        )  # process to write results
         self.lock = Lock()
         self.start_time = 0.0
         self.total_time = 0.0
         self.pending = 0
         self.results = None
+        self.start = start or os.path.relpath(path)
+        self.encoder = get_encoder_class(algo)()
+        self.exporter = get_exporter_class(os.path.splitext(outfile)[1])(outfile)
+        self.queue = Queue()  # queue for tasks
+        self.result_queue = Queue()  # queue for results
+        self.pool = Pool(self.procs, HashWorker.main, (self,))
+        self.writer = Process(
+            target=writer_process, args=(self.result_queue, self.exporter)
+        )  # process to write results
 
     def __str__(self):
         """Returns a string representation of the worker."""
@@ -224,7 +225,6 @@ class HashWorker:
         if self.results and self.total_time:
             raise Exception(f"{self} completed")
         self.start_time = time.time()
-        self.pool = Pool(self.procs, HashWorker.main, (self,))
         self.writer.start()
         self.add_path_to_queue(self.path)
         self.pool.close()
