@@ -43,6 +43,15 @@ available) or regenerated hash values if mtimes are missing or different:
 $ hashio --verify [HASHFILE]
 ```
 
+#### Relative Paths
+
+To use relative paths in the hash file to make them portable, use the `--start`
+option:
+
+```bash
+$ hashio <DIR> --start <START>
+```
+
 ## Environments
 
 You modifiy settings in the `hashio.env`
@@ -73,7 +82,7 @@ directory):
 
 ```python
 from hashio.worker import HashWorker
-worker = HashWorker(path)
+worker = HashWorker(path, outfile="hash.json")
 worker.run()
 ```
 
