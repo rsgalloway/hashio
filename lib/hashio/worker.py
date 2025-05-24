@@ -37,11 +37,11 @@ import multiprocessing
 import os
 import queue
 import time
-from multiprocessing import Lock, Pool, Queue
+from multiprocessing import Lock, Pool, Process, Queue
 
 from hashio import config, utils
 from hashio.encoder import checksum_file, get_encoder_class
-from hashio.exporter import get_exporter_class
+from hashio.exporter import BaseExporter, get_exporter_class
 from hashio.logger import logger
 from hashio.utils import get_metadata, normalize_path
 
@@ -52,12 +52,53 @@ WAIT_TIME = 0.25
 CWD = os.getcwd()
 
 
+def writer_process(
+    queue: Queue,
+    exporter: BaseExporter,
+    flush_interval: float = 1.0,
+    batch_size: int = 100,
+):
+    """A process that writes data from a queue to an exporter.
+
+    :param queue: a multiprocessing Queue containing data to write
+    :param exporter: an instance of an exporter to write data to
+    :param flush_interval: time interval in seconds to flush data
+    :param batch_size: number of items to collect before flushing
+    """
+    buffer = []
+    last_flush = time.time()
+
+    from queue import Empty
+
+    # ensure the exporter is open
+    while True:
+        try:
+            item = queue.get(timeout=flush_interval)
+            if item == "__DONE__":
+                break
+            buffer.append(item)
+        except Empty:
+            pass
+        except Exception as e:
+            logger.error("write error: %s", e)
+
+        if len(buffer) >= batch_size or (time.time() - last_flush) >= flush_interval:
+            for path, data in buffer:
+                exporter.write(path, data)
+            buffer.clear()
+            last_flush = time.time()
+
+    # final flush
+    for path, data in buffer:
+        exporter.write(path, data)
+
+
 class HashWorker:
     """A multiprocessing hash worker class.
 
-        >>> w = HashWorker(path, outfile="hash.json")
-        >>> w.run()
-        >>> pprint(w.results)
+    >>> w = HashWorker(path, outfile="hash.json")
+    >>> w.run()
+    >>> pprint(w.results)
     """
 
     def __init__(
@@ -67,7 +108,7 @@ class HashWorker:
         procs: int = config.MAX_PROCS,
         start: str = None,
         algo: str = config.DEFAULT_ALGO,
-        force: bool =False,
+        force: bool = False,
     ):
         """Initializes a HashWorker instance.
 
@@ -86,7 +127,11 @@ class HashWorker:
         self.start = start or os.path.relpath(path)
         self.encoder = get_encoder_class(algo)()
         self.exporter = get_exporter_class(os.path.splitext(outfile)[1])(outfile)
-        self.queue = Queue()
+        self.queue = Queue()  # queue for tasks
+        self.result_queue = Queue()  # queue for results
+        self.writer = Process(
+            target=writer_process, args=(self.result_queue, self.exporter)
+        )  # process to write results
         self.lock = Lock()
         self.start_time = 0.0
         self.total_time = 0.0
@@ -161,9 +206,9 @@ class HashWorker:
             # if the start directory is not the current working directory,
             # write the normalized path, otherwise write the original path
             if self.start != CWD:
-                self.exporter.write(npath, metadata)
+                self.result_queue.put((npath, metadata))
             else:
-                self.exporter.write(path, metadata)
+                self.result_queue.put((path, metadata))
 
     def reset(self):
         """Resets worker state."""
@@ -176,10 +221,13 @@ class HashWorker:
             raise Exception(f"{self} completed")
         self.start_time = time.time()
         self.pool = Pool(self.procs, HashWorker.main, (self,))
+        self.writer.start()
         self.add_path_to_queue(self.path)
         self.wait_until_done()
         self.pool.close()
         self.pool.join()
+        self.result_queue.put("__DONE__")
+        self.writer.join()
         self.queue.close()
         self.queue.join_thread()
         self.exporter.close()
@@ -222,3 +270,26 @@ class HashWorker:
                 break
             except Exception as err:
                 logger.error(err)
+
+
+def run_profiled(path: str):
+    """Runs the HashWorker with profiling enabled."""
+
+    import cProfile
+    import pstats
+
+    profiler = cProfile.Profile()
+    profiler.enable()
+
+    worker = HashWorker(path=path, outfile=os.path.join(os.getcwd(), "hash.json"))
+    worker.run()
+
+    profiler.disable()
+    stats = pstats.Stats(profiler).sort_stats("cumtime")
+    stats.print_stats(20)  # top 20 cumulative time consumers
+
+
+if __name__ == "__main__":
+    import sys
+
+    run_profiled(sys.argv[1])
