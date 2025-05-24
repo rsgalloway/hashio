@@ -43,22 +43,22 @@ available) or regenerated hash values if mtimes are missing or different:
 $ hashio --verify [HASHFILE]
 ```
 
-#### Relative Paths
+#### Portability
 
-To use relative paths in the hash file to make them portable, use the `--start`
-option:
-
-```bash
-$ hashio <DIR> --start <START>
-```
-
-To verify, use the same `--start` value as when the hash file was created:
+To make a portable hash file, use `--start` to make the paths relative:
 
 ```bash
-$ hashio --verify --start <START>
+$ hashio <DIR> --start <START> -o hash.json
 ```
 
-## Environments
+To verify the data in the hash file, run hashio from the parent dir of the data,
+or set `--start` to the parent dir:
+
+```bash
+$ hashio --verify hash.json
+```
+
+## Environment
 
 You modifiy settings in the `hashio.env`
 [envstack](https://github.com/rsgalloway/envstack) file, or create a new
