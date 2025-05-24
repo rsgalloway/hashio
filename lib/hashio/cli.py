@@ -127,10 +127,12 @@ def main():
     # hash verification
     if args.verify is not None:
         if len(args.verify) == 0:
-            for algo, value, miss in verify_checksums(config.CACHE_FILENAME):
+            for algo, value, miss in verify_checksums(
+                config.CACHE_FILENAME, start=args.start
+            ):
                 print("{0} {1}".format(algo, miss))
         elif len(args.verify) == 1:
-            for algo, value, miss in verify_checksums(args.verify[0]):
+            for algo, value, miss in verify_checksums(args.verify[0], start=args.start):
                 print("{0} {1}".format(algo, miss))
         elif len(args.verify) == 2:
             source = args.verify[0]

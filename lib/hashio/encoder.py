@@ -541,15 +541,13 @@ def dedupe_caches(target: str, source: str, algo: str = config.DEFAULT_ALGO):
     return [(t, s) for t, s in dedupe_cache_gen(target, source, algo=algo)]
 
 
-def verify_checksums(path: str):
+def verify_checksums(path: str, start: str = None):
     """Generator that yields a data tuple for hash misses in a previously
     generated output file. Compares mtimes in the output file with the
     filesystem.
 
-    Currently only supports .json files.
-
-    :param path: path to previously generated cache
-    :yields: tuple of (algo, hash, filepath)
+    :param path: path to hash file
+    :yields: tuple of (algo, hash value, filepath)
     """
     from hashio.exporter import get_exporter_class
 
@@ -559,7 +557,11 @@ def verify_checksums(path: str):
     ext = os.path.splitext(path)[-1]
     exporter_class = get_exporter_class(ext)
     data = exporter_class.read(path)
-    root = os.path.dirname(path)
+
+    if start is None or start == os.getcwd():
+        root = os.path.dirname(path)
+    else:
+        root = start
 
     for filename, metadata in data.items():
         filepath = os.path.join(root, filename)

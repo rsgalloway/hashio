@@ -52,6 +52,12 @@ option:
 $ hashio <DIR> --start <START>
 ```
 
+To verify, use the same `--start` value as when the hash file was created:
+
+```bash
+$ hashio --verify --start <START>
+```
+
 ## Environments
 
 You modifiy settings in the `hashio.env`
