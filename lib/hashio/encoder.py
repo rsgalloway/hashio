@@ -200,6 +200,7 @@ class Encoder(object):
 
     @classmethod
     def get(cls, name: str):
+        """Returns an instance of the encoder class matching the given name."""
         ENCODER_MAP = dict([(sc.name, sc) for sc in Encoder.__subclasses__()])
         encoder_class = ENCODER_MAP.get(name)
         try:
@@ -208,12 +209,15 @@ class Encoder(object):
             raise Exception(f"Invalid encoder: {name}")
 
     def hexdigest(self):
+        """Return the checksum as a hexadecimal string."""
         return self.hash.hexdigest()
 
     def reset(self):
+        """Reset the checksum encoder to its initial state."""
         self.__init__()
 
-    def update(self, data: dict):
+    def update(self, data: bytes):
+        """Update the checksum with the given data."""
         self.hash.update(data)
 
 
@@ -301,6 +305,7 @@ class C4Encoder(SHA512Encoder):
         super(C4Encoder, self).__init__()
 
     def hexdigest(self):
+        """Convert the SHA512 hash to a C4 checksum."""
         hexstr = ""
         shastr = super(C4Encoder, self).hexdigest()
         value = int(shastr, 16)
