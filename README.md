@@ -60,7 +60,7 @@ $ hashio --verify hash.json
 
 ## Environment
 
-You modifiy settings in the `hashio.env`
+You modify settings in the `hashio.env`
 [envstack](https://github.com/rsgalloway/envstack) file, or create a new
 environment stack:
 
