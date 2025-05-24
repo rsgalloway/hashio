@@ -65,8 +65,10 @@ class BaseExporter:
 
 
 class JSONExporter(BaseExporter):
-    """JSON streaming exporter. Opens a filepointer to a .json output file which
-    data can be written to."""
+    """
+    JSON streaming exporter. Opens a .json output file pointer to which data can
+    be written.
+    """
 
     ext = ".json"
 
@@ -77,8 +79,9 @@ class JSONExporter(BaseExporter):
         fp.close()
 
     def close(self):
-        """Closes file pointer to output file, and writes final closing }.
-        Do not call until writing data is completed.
+        """
+        Closes file pointer to output file, and writes final closing }. Do not
+        call until writing data is completed.
         """
         if config.PLATFORM == "windows":
             offset = -3  # \n\r
@@ -93,8 +96,9 @@ class JSONExporter(BaseExporter):
 
     @classmethod
     def read(self, filepath: str):
-        """Reads and returns the json content at a given filepath, or {} if
-        there is an error.
+        """
+        Reads and returns the json content at a given filepath, or {} if there
+        is an error.
         """
         try:
             fp = open(filepath)
@@ -107,8 +111,9 @@ class JSONExporter(BaseExporter):
             return {}
 
     def write(self, path: str, data: dict):
-        """Writes `data` to file indexed by `path`. The contents of the cache
-        file should be data dicts indexed by unique paths.
+        """
+        Writes `data` to file indexed by `path`. The contents of the cache file
+        should be data dicts indexed by unique paths.
 
             {
                 path1: {data1},
@@ -125,10 +130,12 @@ class JSONExporter(BaseExporter):
         :param data: the data to write
         """
 
-        # normalize the path relative to the output file path
-        path = normalize_path(path, start=os.path.dirname(self.filepath))
+        # normalize the path relative to the hash file
+        path = normalize_path(
+            os.path.abspath(path), start=os.path.dirname(self.filepath)
+        )
 
-        # write json serialized data to output file in a thread-safe manner
+        # write json serialized data to hash file in a thread-safe manner
         with open(self.filepath, "a+") as f:
             lock = threading.Lock()
             lock.acquire()
@@ -139,8 +146,9 @@ class JSONExporter(BaseExporter):
 
 
 class CacheExporter(JSONExporter):
-    """Cache data exporter. Hash caches are files that contain serialized hash
-    and filesystem metadata. All paths in a cache file are relative to the cache
+    """
+    Cache data exporter. Hash caches are files that contain serialized hash and
+    filesystem metadata. All paths in a cache file are relative to the cache
     file itself.
     """
 
@@ -151,7 +159,8 @@ class CacheExporter(JSONExporter):
 
     @classmethod
     def get_cache(cls, path: str):
-        """Returns the cache filename for a given path.
+        """
+        Returns the cache filename for a given path.
 
         The cache file will be written to the directory containing the path. For
         example if the path is `/a/b/c/d` then the cache will be written to
@@ -164,8 +173,8 @@ class CacheExporter(JSONExporter):
 
     @classmethod
     def find(cls, path: str, key: str):
-        """Searches for path in cached data, and compares mtimes for a given
-        path.
+        """
+        Searches for path in cached data, and compares mtimes for a given path.
 
         :param path: filesystem path
         :param key: key name of cached value to return
@@ -195,7 +204,7 @@ class MHLExporter(BaseExporter):
 
     would be:
 
-      $ hashio <file> --hash md5 -rm -t f -o out.mhl
+      $ hashio <file> --algo md5 -o out.mhl
     """
 
     ext = ".mhl"
@@ -229,6 +238,33 @@ class MHLExporter(BaseExporter):
         if ts is None:
             ts = int(time.time())
         return datetime.utcfromtimestamp(ts).strftime(self.time_format)
+
+    @classmethod
+    def read(self, filepath: str):
+        """Reads MHL data from file and returns a list of dicts.
+
+        :param filepath: file path to read
+        :returns: list of dicts with MHL data
+        """
+        from lxml import etree
+
+        try:
+            with open(filepath, "r") as f:
+                tree = etree.parse(f)
+                hashes = tree.xpath("/hashlist/hash")
+                return {
+                    h.findtext("file"): {
+                        "hashdate": h.findtext("hashdate"),
+                        "lastmodificationdate": h.findtext("lastmodificationdate"),
+                        "size": int(h.findtext("size", default="0")),
+                        "file": h.findtext("file"),
+                        "md5": h.findtext("md5", default=""),
+                    }
+                    for h in hashes
+                }
+        except Exception as err:
+            print(err)
+            return []
 
     def write(self, path: str, data: dict):
         """Writes out data as MHL-specified XML data.
