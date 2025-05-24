@@ -38,9 +38,18 @@ import os
 import platform
 
 # default output filename
-CACHE_FILENAME = os.getenv("HASHIO_OUTFILE", "hash.json")
+HOME = os.getenv("HOME", os.path.expanduser("~"))
+PLATFORM = platform.system().lower()
+CACHE_ROOT = {
+    "darwin": f"{HOME}/Library/Caches/hashio",
+    "linux": f"{HOME}/.cache/hashio",
+    "windows": os.path.join(
+        os.environ.get("LOCALAPPDATA", os.path.join(HOME, "AppData", "Local")), "hashio"
+    ),
+}.get(PLATFORM)
+CACHE_FILENAME = os.getenv("HASHIO_OUTFILE", os.path.join(CACHE_ROOT, "hash.json"))
 
-# the default hashing algorithm
+# the default hashing algorithm to use
 DEFAULT_ALGO = os.getenv("HASHIO_ALGO", "xxh64")
 
 # ignorable file patterns
@@ -69,14 +78,11 @@ IGNORABLE = [
     "lost_found",
 ]
 
-# logging level
+# default logging level
 LOG_LEVEL = os.getenv("LOG_LEVEL", logging.INFO)
 
-# work in 64KB chunks to limit mem usage when reading large files
+# work in 64KB chunks to limit mem usage for large files
 BUF_SIZE = int(os.getenv("BUF_SIZE", 65536))
 
 # maximum number of search and hash processes to spawn
 MAX_PROCS = int(os.getenv("MAX_PROCS", 10))
-
-# cache the name of the platform (linux or windows)
-PLATFORM = platform.system().lower()
