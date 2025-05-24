@@ -41,7 +41,7 @@ from multiprocessing import Lock, Pool, Queue
 
 from hashio import config, utils
 from hashio.encoder import checksum_file, get_encoder_class
-from hashio.exporter import CacheExporter
+from hashio.exporter import CacheExporter, get_exporter_class
 from hashio.logger import logger
 from hashio.utils import get_metadata, normalize_path
 
@@ -72,7 +72,7 @@ class HashWorker:
         self.force = force
         self.start = start or os.path.relpath(path)
         self.encoder = get_encoder_class(algo)()
-        self.exporter = CacheExporter(outfile)
+        self.exporter = get_exporter_class(os.path.splitext(outfile)[1])(outfile)
         self.queue = Queue()
         self.lock = Lock()
         self.start_time = 0.0
