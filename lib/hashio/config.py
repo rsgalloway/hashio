@@ -30,7 +30,7 @@
 #
 
 __doc__ = """
-Contains configs and settings.
+Contains default hashio configs and settings.
 """
 
 import logging
@@ -52,10 +52,11 @@ IGNORABLE = [
     "*.bak",
     "*.swp",
     "*.tmp",
-    ".git",
-    ".svn",
+    ".git*",
+    ".svn*",
     "dist",
     "build",
+    ".venv*",
     "venv*",
     ".jetpart*",
     "*.egg-info",
