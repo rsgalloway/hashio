@@ -135,6 +135,7 @@ class HashWorker:
         self.lock = Lock()
         self.start_time = 0.0
         self.total_time = 0.0
+        self.pending = 0
         self.results = None
 
     def __str__(self):
@@ -159,7 +160,8 @@ class HashWorker:
 
         :param path: file path
         """
-        self.add_to_queue({"task": "hash", "path": path})
+        self.pending += 1
+        self.queue.put({"task": "hash", "path": path})
 
     def explore_path(self, path: str):
         """Walks a dir and adds files to hash queue, and returns a list of
@@ -210,6 +212,8 @@ class HashWorker:
             else:
                 self.result_queue.put((path, metadata))
 
+            self.pending -= 1
+
     def reset(self):
         """Resets worker state."""
         self.results = None
@@ -223,7 +227,6 @@ class HashWorker:
         self.pool = Pool(self.procs, HashWorker.main, (self,))
         self.writer.start()
         self.add_path_to_queue(self.path)
-        self.wait_until_done()
         self.pool.close()
         self.pool.join()
         self.result_queue.put("__DONE__")
@@ -241,13 +244,6 @@ class HashWorker:
         self.exporter.close()
         self.total_time = time.time() - self.start_time
         self.results = self.exporter.read(self.outfile)
-
-    def wait_until_done(self):
-        """Blocks main process until queue is empty."""
-        while True:
-            time.sleep(WAIT_TIME)
-            if self.queue.qsize() <= 0:
-                break
 
     @staticmethod
     def main(worker):
