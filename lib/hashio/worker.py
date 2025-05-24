@@ -41,7 +41,7 @@ from multiprocessing import Lock, Pool, Queue
 
 from hashio import config, utils
 from hashio.encoder import checksum_file, get_encoder_class
-from hashio.exporter import CacheExporter, get_exporter_class
+from hashio.exporter import get_exporter_class
 from hashio.logger import logger
 from hashio.utils import get_metadata, normalize_path
 
@@ -128,7 +128,8 @@ class HashWorker:
         return directories
 
     def do_hash(self, path: str):
-        """Checksums a given path and exports metadata.
+        """Checksums a given path. Writes the checksum and file metadata to the
+        exporter.
 
         :param path: file path
         """
@@ -141,6 +142,7 @@ class HashWorker:
             self.exporter.write(npath, metadata)
 
     def reset(self):
+        """Resets worker state."""
         self.results = None
         self.total_time = 0.0
 

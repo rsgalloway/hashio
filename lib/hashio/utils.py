@@ -90,17 +90,37 @@ def is_subpath(filepath: str, directory: str):
     return os.path.commonprefix([f, d]) == d
 
 
-def normalize_path(path: str, start: str = os.getcwd()):
-    """Returns a normalized relative path.
+def normalize_path(path: str, start: str = None):
+    """
+    Returns a normalized path:
+
+    - If 'path' is relative, returns it normalized.
+    - If 'path' is absolute and starts with 'start', returns the relative path from 'start'.
+    - Otherwise, returns the absolute normalized path.
+
+    Resolves symbolic links to avoid mismatches between real and symlinked paths.
 
     :param path: file system path
-    :param start: path to start from
-    :returns: normalized path
+    :param start: base path for relative resolution, defaults to current directory
+    :returns: normalized path using forward slashes
     """
-    npath = os.path.normpath(path)
-    if start is None or is_subpath(path, start):
-        return os.path.relpath(npath, start=start).replace("\\", "/")
-    return os.path.abspath(npath).replace("\\", "/")
+    if start is None:
+        start = os.getcwd()
+
+    path = os.path.normpath(path)
+
+    if not os.path.isabs(path):
+        return path.replace("\\", "/")
+
+    # resolve symlinks to compare apples to apples
+    real_path = os.path.realpath(path)
+    real_start = os.path.realpath(start)
+
+    if real_path.startswith(real_start + os.sep):
+        rel = os.path.relpath(real_path, real_start)
+        return rel.replace("\\", "/")
+
+    return real_path.replace("\\", "/")
 
 
 def paths_are_equal(a: str, b: str):

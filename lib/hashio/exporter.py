@@ -131,7 +131,7 @@ class JSONExporter(BaseExporter):
         """
 
         # normalize the path relative to the hash file
-        path = normalize_path(
+        npath = normalize_path(
             os.path.abspath(path), start=os.path.dirname(self.filepath)
         )
 
@@ -140,7 +140,7 @@ class JSONExporter(BaseExporter):
             lock = threading.Lock()
             lock.acquire()
             try:
-                f.write('    "{0}": {1},\n'.format(path, json.dumps(data, indent=8)))
+                f.write('    "{0}": {1},\n'.format(npath, json.dumps(data, indent=8)))
             finally:
                 lock.release()
 
