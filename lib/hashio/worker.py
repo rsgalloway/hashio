@@ -55,20 +55,30 @@ CWD = os.getcwd()
 class HashWorker:
     """A multiprocessing hash worker class.
 
-    >>> w = HashWorker(path)
-    >>> w.run()
-    >>> pprint(w.results)
+        >>> w = HashWorker(path, outfile="hash.json")
+        >>> w.run()
+        >>> pprint(w.results)
     """
 
     def __init__(
         self,
-        path=os.getcwd(),
-        outfile=config.CACHE_FILENAME,
-        procs=config.MAX_PROCS,
-        start=None,
-        algo=config.DEFAULT_ALGO,
-        force=False,
+        path: str = os.getcwd(),
+        outfile: str = config.CACHE_FILENAME,
+        procs: int = config.MAX_PROCS,
+        start: str = None,
+        algo: str = config.DEFAULT_ALGO,
+        force: bool =False,
     ):
+        """Initializes a HashWorker instance.
+
+        :param path: path to search for files to hash
+        :param outfile: output file to write results to
+        :param procs: maximum number of processes to use
+        :param start: starting path for relative paths in output
+        :param algo: hashing algorithm to use
+        :param force: if True, force hashing of all files in the directory
+            regardless of file type or existence in cache
+        """
         self.path = path
         self.outfile = outfile
         self.procs = procs
@@ -83,6 +93,7 @@ class HashWorker:
         self.results = None
 
     def __str__(self):
+        """Returns a string representation of the worker."""
         p_name = multiprocessing.current_process().name
         return f"<HashWorker {p_name}>"
 
