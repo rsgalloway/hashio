@@ -130,17 +130,12 @@ class JSONExporter(BaseExporter):
         :param data: the data to write
         """
 
-        # normalize the path relative to the hash file
-        npath = normalize_path(
-            os.path.abspath(path), start=os.path.dirname(self.filepath)
-        )
-
         # write json serialized data to hash file in a thread-safe manner
         with open(self.filepath, "a+") as f:
             lock = threading.Lock()
             lock.acquire()
             try:
-                f.write('    "{0}": {1},\n'.format(npath, json.dumps(data, indent=8)))
+                f.write('    "{0}": {1},\n'.format(path, json.dumps(data, indent=8)))
             finally:
                 lock.release()
 

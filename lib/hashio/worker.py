@@ -48,6 +48,9 @@ from hashio.utils import get_metadata, normalize_path
 # wait time in seconds to check for queue emptiness
 WAIT_TIME = 0.25
 
+# cache the current working directory
+CWD = os.getcwd()
+
 
 class HashWorker:
     """A multiprocessing hash worker class.
@@ -134,12 +137,22 @@ class HashWorker:
         :param path: file path
         """
         value = checksum_file(path, self.encoder)
+
+        # normalize path to be relative to the start directory
         npath = normalize_path(path, start=self.start)
+
+        # get metadata for the file
         metadata = get_metadata(path)
         metadata.update({self.encoder.name: value})
+
         print(f"{value}  {npath}")
         with self.lock:
-            self.exporter.write(npath, metadata)
+            # if the start directory is not the current working directory,
+            # write the normalized path, otherwise write the original path
+            if self.start != CWD:
+                self.exporter.write(npath, metadata)
+            else:
+                self.exporter.write(path, metadata)
 
     def reset(self):
         """Resets worker state."""

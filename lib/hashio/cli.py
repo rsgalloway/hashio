@@ -146,6 +146,10 @@ def main():
         print(f"path does not exist: {args.path}")
         return 2
 
+    if os.path.isdir(args.outfile):
+        print(f"output file cannot be a directory: {args.outfile}")
+        return 2
+
     if not get_encoder_class(args.algo):
         print(f"unsupported hash algorithm: {args.algo}")
         return 2
