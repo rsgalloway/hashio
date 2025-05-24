@@ -47,7 +47,7 @@ CACHE_ROOT = {
         os.environ.get("LOCALAPPDATA", os.path.join(HOME, "AppData", "Local")), "hashio"
     ),
 }.get(PLATFORM)
-CACHE_FILENAME = os.getenv("HASHIO_OUTFILE", os.path.join(CACHE_ROOT, "hash.json"))
+CACHE_FILENAME = os.getenv("HASHIO_FILE", os.path.join(CACHE_ROOT, "hash.json"))
 
 # the default hashing algorithm to use
 DEFAULT_ALGO = os.getenv("HASHIO_ALGO", "xxh64")

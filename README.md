@@ -58,13 +58,13 @@ $ ./debug.env -- hashio
 Default config settings are in the config.py module. The following environment
 variables are supported:
 
-| Variable        | Description |
-|-----------------|-------------|
-| $BUF_SIZE       | chunk size in bytes when reading files |
-| $HASHIO_ALGO    | default hashing algorithm to use |
-| $HASHIO_OUTFILE | default output location of hash file |
-| $LOG_LEVEL      | logging level to use (DEBUG, INFO, etc) |
-| $MAX_PROCS      | max number hash processes to spawn |
+| Variable      | Description |
+|---------------|-------------|
+| $BUF_SIZE     | chunk size in bytes when reading files |
+| $HASHIO_ALGO  | default hashing algorithm to use |
+| $HASHIO_FILE  | default hash file location |
+| $LOG_LEVEL    | logging level to use (DEBUG, INFO, etc) |
+| $MAX_PROCS    | max number hash processes to spawn |
 
 ## Python API
 
