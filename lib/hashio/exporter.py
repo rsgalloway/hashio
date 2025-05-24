@@ -51,8 +51,9 @@ class BaseExporter:
     """Exporter base class."""
 
     def __init__(self, filepath: str):
-        if not os.path.exists(os.path.dirname(filepath)):
-            os.makedirs(os.path.dirname(filepath))
+        dirname = os.path.dirname(filepath)
+        if dirname and not os.path.exists(dirname):
+            os.makedirs(dirname)
         self.filepath = filepath
 
     def close(self):
