@@ -137,7 +137,7 @@ class JSONExporter(BaseExporter):
             try:
                 f.write('    "{0}": {1},\n'.format(path, json.dumps(data, indent=8)))
             except Exception as err:
-                logger.warning(f"Write error: {err}")
+                logger.warning("write error: %s", err)
 
 
 class CacheExporter(JSONExporter):

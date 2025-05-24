@@ -208,7 +208,6 @@ class HashWorker:
                 elif task == "hash":
                     worker.do_hash(path)
             except queue.Empty:
-                logger.debug("empty queue: aborting")
                 break
             except Exception as err:
                 logger.error(err)
