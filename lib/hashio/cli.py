@@ -55,7 +55,7 @@ def parse_args():
         type=str,
         metavar="PATH",
         nargs="?",
-        help="path to checksum",
+        help="path to directory or files to checksum",
         default=os.getcwd(),
     )
     parser.add_argument(
@@ -63,17 +63,18 @@ def parse_args():
         "--outfile",
         type=str,
         metavar="OUTFILE",
-        help="write results to output OUTFILE",
+        help="write results to OUTFILE",
         default=config.CACHE_FILENAME,
     )
     parser.add_argument(
         "--procs",
         type=int,
         metavar="PROCS",
-        help="max number of spawned processes to use",
+        help="max number of processes to use",
         default=config.MAX_PROCS,
     )
     parser.add_argument(
+        "-s",
         "--start",
         type=str,
         metavar="START",
@@ -81,6 +82,7 @@ def parse_args():
         default=os.getcwd(),
     )
     parser.add_argument(
+        "-a",
         "--algo",
         type=str,
         metavar="ALGO",
