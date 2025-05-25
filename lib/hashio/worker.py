@@ -118,8 +118,7 @@ class HashWorker:
         :param procs: maximum number of processes to use
         :param start: starting path for relative paths in output
         :param algo: hashing algorithm to use
-        :param force: if True, force hashing of all files in the directory
-            regardless of file type or existence in cache
+        :param force: hash all files including ignorable patterns
         :param verbose: if True, print verbose output
         """
         self.path = path
@@ -131,7 +130,6 @@ class HashWorker:
         self.total_time = 0.0
         self.pending = 0
         self.verbose = verbose
-        self.results = None
         self.progress = Value("i", 0)  # shared int for progress
         self.start = start or os.path.relpath(path)
         self.encoder = get_encoder_class(algo)()
@@ -232,15 +230,8 @@ class HashWorker:
         with self.progress.get_lock():
             self.progress.value += 1
 
-    def reset(self):
-        """Resets worker state."""
-        self.results = None
-        self.total_time = 0.0
-
     def run(self):
-        """Starts worker processes in a blocking way and returns results."""
-        if self.results and self.total_time:
-            raise Exception(f"{self} completed")
+        """Runs the worker."""
         self.start_time = time.time()
         self.writer.start()
         self.add_path_to_queue(self.path)
@@ -252,7 +243,6 @@ class HashWorker:
         self.queue.join_thread()
         self.exporter.close()
         self.total_time = time.time() - self.start_time
-        self.results = self.exporter.read(self.outfile)
         self.done.set()
 
     def stop(self):
@@ -261,7 +251,6 @@ class HashWorker:
         self.pool.terminate()
         self.exporter.close()
         self.total_time = time.time() - self.start_time
-        self.results = self.exporter.read(self.outfile)
 
     @staticmethod
     def main(worker):
