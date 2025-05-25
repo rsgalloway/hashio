@@ -34,6 +34,7 @@ Contains command line interface for hashio.
 """
 
 import argparse
+import multiprocessing
 import os
 import sys
 
@@ -115,14 +116,36 @@ def parse_args():
     return args
 
 
+def watch_progress(worker: HashWorker):
+    """Watch the progress of the worker and update a progress bar."""
+
+    import time
+    from tqdm import tqdm
+
+    pbar = tqdm(desc="hashing files", unit="file")
+    last = 0
+
+    while not worker.done.is_set():
+        with worker.progress.get_lock():
+            current = worker.progress.value
+        delta = current - last
+        if delta:
+            pbar.update(delta)
+            last = current
+        time.sleep(0.2)
+
+    # final update in case we missed some
+    with worker.progress.get_lock():
+        final = worker.progress.value
+
+    pbar.update(final - last)
+    pbar.close()
+
+
 def main():
     """Main thread."""
 
     args = parse_args()
-
-    # verbose logging output
-    if args.verbose:
-        logger.setLevel(10)
 
     # hash verification
     if args.verify is not None:
@@ -164,10 +187,16 @@ def main():
         start=args.start,
         algo=args.algo,
         force=args.force,
+        verbose=args.verbose,
     )
 
     try:
+        if not args.verbose:
+            watcher = multiprocessing.Process(target=watch_progress, args=(worker,))
+            watcher.start()
         worker.run()
+        if not args.verbose:
+            watcher.join()
 
     except KeyboardInterrupt:
         print("stopping...")

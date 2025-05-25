@@ -37,7 +37,7 @@ import multiprocessing
 import os
 import queue
 import time
-from multiprocessing import Lock, Pool, Process, Queue
+from multiprocessing import Event, Lock, Pool, Process, Queue, Value
 
 from hashio import config, utils
 from hashio.encoder import checksum_file, get_encoder_class
@@ -96,9 +96,9 @@ def writer_process(
 class HashWorker:
     """A multiprocessing hash worker class.
 
-    >>> w = HashWorker(path, outfile="hash.json")
-    >>> w.run()
-    >>> pprint(w.results)
+        >>> w = HashWorker(path, outfile="hash.json")
+        >>> w.run()
+        >>> pprint(w.results)
     """
 
     def __init__(
@@ -109,6 +109,7 @@ class HashWorker:
         start: str = None,
         algo: str = config.DEFAULT_ALGO,
         force: bool = False,
+        verbose: bool = False,
     ):
         """Initializes a HashWorker instance.
 
@@ -119,6 +120,7 @@ class HashWorker:
         :param algo: hashing algorithm to use
         :param force: if True, force hashing of all files in the directory
             regardless of file type or existence in cache
+        :param verbose: if True, print verbose output
         """
         self.path = path
         self.outfile = outfile
@@ -128,13 +130,16 @@ class HashWorker:
         self.start_time = 0.0
         self.total_time = 0.0
         self.pending = 0
+        self.verbose = verbose
         self.results = None
+        self.progress = Value("i", 0)  # shared int for progress
         self.start = start or os.path.relpath(path)
         self.encoder = get_encoder_class(algo)()
         self.exporter = get_exporter_class(os.path.splitext(outfile)[1])(outfile)
         self.queue = Queue()  # queue for tasks
         self.result_queue = Queue()  # queue for results
         self.pool = Pool(self.procs, HashWorker.main, (self,))
+        self.done = Event()
         self.writer = Process(
             target=writer_process, args=(self.result_queue, self.exporter)
         )  # process to write results
@@ -150,14 +155,16 @@ class HashWorker:
             self.queue.put(data)
 
     def add_path_to_queue(self, path: str):
-        """Add a directory to the search queue.
+        """
+        Add a directory to the search queue.
 
         :param path: search path
         """
         self.add_to_queue({"task": "search", "path": path})
 
     def add_hash_to_queue(self, path: str):
-        """Add a filename to the hash queue.
+        """
+        Add a filename to the hash queue.
 
         :param path: file path
         """
@@ -165,8 +172,9 @@ class HashWorker:
         self.queue.put({"task": "hash", "path": path})
 
     def explore_path(self, path: str):
-        """Walks a dir and adds files to hash queue, and returns a list of
-        found subdirs to add to the search queue.
+        """
+        Walks a dir and adds files to hash queue, and returns a list of found
+        subdirs to add to the search queue.
 
         :param path: search path
         """
@@ -190,7 +198,8 @@ class HashWorker:
         return directories
 
     def do_hash(self, path: str):
-        """Checksums a given path. Writes the checksum and file metadata to the
+        """
+        Checksums a given path. Writes the checksum and file metadata to the
         exporter.
 
         :param path: file path
@@ -204,7 +213,10 @@ class HashWorker:
         metadata = get_metadata(path)
         metadata.update({self.encoder.name: value})
 
-        print(f"{value}  {npath}")
+        # print progress to stdout
+        if self.verbose:
+            print(f"{value}  {npath}")
+
         with self.lock:
             # if the start directory is not the current working directory,
             # write the normalized path, otherwise write the original path
@@ -213,7 +225,12 @@ class HashWorker:
             else:
                 self.result_queue.put((path, metadata))
 
+            # decrement pending count
             self.pending -= 1
+
+        # update progress
+        with self.progress.get_lock():
+            self.progress.value += 1
 
     def reset(self):
         """Resets worker state."""
@@ -236,6 +253,7 @@ class HashWorker:
         self.exporter.close()
         self.total_time = time.time() - self.start_time
         self.results = self.exporter.read(self.outfile)
+        self.done.set()
 
     def stop(self):
         """Stops worker."""
@@ -251,7 +269,6 @@ class HashWorker:
         while True:
             try:
                 data = worker.queue.get(True, timeout=WAIT_TIME)
-                logger.debug("data %s", data)
                 if data == -1:
                     break
                 task = data["task"]
