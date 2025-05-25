@@ -96,9 +96,9 @@ def writer_process(
 class HashWorker:
     """A multiprocessing hash worker class.
 
-        >>> w = HashWorker(path, outfile="hash.json")
-        >>> w.run()
-        >>> pprint(w.results)
+    >>> w = HashWorker(path, outfile="hash.json")
+    >>> w.run()
+    >>> pprint(w.results)
     """
 
     def __init__(

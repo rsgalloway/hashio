@@ -98,15 +98,14 @@ class JSONExporter(BaseExporter):
         fp.close()
 
     @classmethod
-    def read(self, filepath: str):
+    def read(cls, filepath: str):
         """
         Reads and returns the json content at a given filepath, or {} if there
         is an error.
         """
         try:
-            fp = open(filepath)
-            data = json.load(fp)
-            fp.close()
+            with open(filepath) as fp:
+                data = json.load(fp)
             return data
 
         except json.decoder.JSONDecodeError as err:
@@ -235,7 +234,7 @@ class MHLExporter(BaseExporter):
         return datetime.utcfromtimestamp(ts).strftime(self.time_format)
 
     @classmethod
-    def read(self, filepath: str):
+    def read(cls, filepath: str):
         """Reads MHL data from file and returns a list of dicts.
 
         :param filepath: file path to read
