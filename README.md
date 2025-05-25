@@ -60,16 +60,6 @@ $ hashio --verify hash.json
 
 ## Environment
 
-You modify settings in the `hashio.env`
-[envstack](https://github.com/rsgalloway/envstack) file, or create a new
-environment stack:
-
-```bash
-$ cp hashio.env debug.env
-$ vi debug.env  # make edits
-$ ./debug.env -- hashio
-```
-
 Default config settings are in the config.py module. The following environment
 variables are supported:
 
@@ -80,6 +70,15 @@ variables are supported:
 | $HASHIO_FILE  | default hash file location |
 | $LOG_LEVEL    | logging level to use (DEBUG, INFO, etc) |
 | $MAX_PROCS    | max number hash processes to spawn |
+
+Optionally, modify the `hashio.env` file if using [envstack](https://github.com/rsgalloway/envstack),
+or create a new env file:
+
+```bash
+$ cp hashio.env debug.env
+$ vi debug.env  # make edits
+$ ./debug.env -- hashio
+```
 
 ## Python API
 
