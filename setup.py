@@ -72,6 +72,8 @@ setup(
         ],
     },
     install_requires=[
+        "lxml==5.3.0",
+        "tqdm==4.67.1",
         "xxhash==3.5.0",
     ],
     python_requires=">=3.6",
