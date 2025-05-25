@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2024, Ryan Galloway (ryan@rsgalloway.com)
+# Copyright (c) 2024-2025, Ryan Galloway (ryan@rsgalloway.com)
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -40,7 +40,7 @@ with open(os.path.join(here, "README.md")) as f:
 
 setup(
     name="hashio",
-    version="0.2.1",
+    version="0.3.0",
     description="Custom file and directory checksum tool",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -72,7 +72,8 @@ setup(
         ],
     },
     install_requires=[
-        "envstack>=0.8.3",
+        "lxml==5.3.0",
+        "tqdm==4.67.1",
         "xxhash==3.5.0",
     ],
     python_requires=">=3.6",

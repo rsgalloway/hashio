@@ -9,6 +9,7 @@ MANIFEST
 .pytest_cache
 __pycache__
 hash.json
+*.mhl
 tmp/
 .env
 .venv*/

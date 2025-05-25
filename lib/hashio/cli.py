@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2024, Ryan Galloway (ryan@rsgalloway.com)
+# Copyright (c) 2024-2025, Ryan Galloway (ryan@rsgalloway.com)
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -34,17 +34,18 @@ Contains command line interface for hashio.
 """
 
 import argparse
+import multiprocessing
 import os
 import sys
 
-from hashio import __version__, config
+from hashio import __version__, config, utils
 from hashio.encoder import get_encoder_class, verify_caches, verify_checksums
 from hashio.logger import logger
 from hashio.worker import HashWorker
 
 
 def parse_args():
-    """sys.argv parser, returns args."""
+    """Parse command line arguments."""
 
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
@@ -54,7 +55,7 @@ def parse_args():
         type=str,
         metavar="PATH",
         nargs="?",
-        help="path to checksum",
+        help="path to directory or files to checksum",
         default=os.getcwd(),
     )
     parser.add_argument(
@@ -62,17 +63,18 @@ def parse_args():
         "--outfile",
         type=str,
         metavar="OUTFILE",
-        help="write results to output OUTFILE",
+        help="write results to OUTFILE",
         default=config.CACHE_FILENAME,
     )
     parser.add_argument(
         "--procs",
         type=int,
         metavar="PROCS",
-        help="max number of spawned processes to use",
+        help="max number of processes to use",
         default=config.MAX_PROCS,
     )
     parser.add_argument(
+        "-s",
         "--start",
         type=str,
         metavar="START",
@@ -80,6 +82,7 @@ def parse_args():
         default=os.getcwd(),
     )
     parser.add_argument(
+        "-a",
         "--algo",
         type=str,
         metavar="ALGO",
@@ -91,7 +94,12 @@ def parse_args():
         action="store_true",
         help="skip ignorables",
     )
-    parser.add_argument("--verbose", action="store_true", help="verbose output")
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="verbose output",
+    )
     parser.add_argument(
         "--version",
         action="version",
@@ -102,12 +110,45 @@ def parse_args():
         "--verify",
         type=str,
         metavar="HASHFILE",
-        nargs="+",
-        help="verify checksums from a previously created hash.json file",
+        nargs="*",
+        help="verify checksums from a previously created hash file",
     )
 
     args = parser.parse_args()
     return args
+
+
+def watch_progress(worker: HashWorker):
+    """Watch the progress of the worker and update a progress bar.
+
+    :param worker: HashWorker instance to monitor
+    """
+
+    import time
+    from tqdm import tqdm
+
+    pbar = tqdm(
+        desc="hashing files",
+        disable=(worker.verbose or not sys.stdout.isatty()),
+        unit="file",
+    )
+    last = 0
+
+    while not worker.done.is_set():
+        with worker.progress.get_lock():
+            current = worker.progress.value
+        delta = current - last
+        if delta:
+            pbar.update(delta)
+            last = current
+        time.sleep(0.2)
+
+    # final update in case we missed some
+    with worker.progress.get_lock():
+        final = worker.progress.value
+
+    pbar.update(final - last)
+    pbar.close()
 
 
 def main():
@@ -115,12 +156,15 @@ def main():
 
     args = parse_args()
 
-    if args.verbose:
-        logger.setLevel(10)
-
-    if args.verify:
-        if len(args.verify) == 1:
-            for algo, value, miss in verify_checksums(args.verify[0]):
+    # hash verification
+    if args.verify is not None:
+        if len(args.verify) == 0:
+            for algo, value, miss in verify_checksums(
+                config.CACHE_FILENAME, start=args.start
+            ):
+                print("{0} {1}".format(algo, miss))
+        elif len(args.verify) == 1:
+            for algo, value, miss in verify_checksums(args.verify[0], start=args.start):
                 print("{0} {1}".format(algo, miss))
         elif len(args.verify) == 2:
             source = args.verify[0]
@@ -132,10 +176,23 @@ def main():
             return 2
         return 0
 
+    if not os.path.exists(args.path):
+        print(f"path does not exist: {args.path}")
+        return 2
+
+    if utils.is_ignorable(args.path) and not args.force:
+        print(f"path is ignorable: {args.path}")
+        return 2
+
+    if os.path.isdir(args.outfile):
+        print(f"output file cannot be a directory: {args.outfile}")
+        return 2
+
     if not get_encoder_class(args.algo):
         print(f"unsupported hash algorithm: {args.algo}")
         return 2
 
+    # create hash worker and generate checksums
     worker = HashWorker(
         args.path,
         args.outfile,
@@ -143,10 +200,14 @@ def main():
         start=args.start,
         algo=args.algo,
         force=args.force,
+        verbose=args.verbose,
     )
 
     try:
+        watcher = multiprocessing.Process(target=watch_progress, args=(worker,))
+        watcher.start()
         worker.run()
+        watcher.join()
 
     except KeyboardInterrupt:
         print("stopping...")
@@ -154,7 +215,7 @@ def main():
         return 2
 
     finally:
-        logger.debug(f"done in {worker.total_time} seconds")
+        logger.debug("done in %s seconds", worker.total_time)
 
     return 0
 

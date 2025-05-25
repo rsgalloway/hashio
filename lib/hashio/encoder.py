@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2024, Ryan Galloway (ryan@rsgalloway.com)
+# Copyright (c) 2024-2025, Ryan Galloway (ryan@rsgalloway.com)
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -35,8 +35,9 @@ Contains checksum encoder classes and functions.
 
 import hashlib
 import os
-
 import xxhash
+import zlib
+from typing import List
 
 from hashio import config
 from hashio.exporter import CacheExporter
@@ -44,7 +45,7 @@ from hashio.logger import logger
 from hashio.utils import read_file, walk
 
 
-def bytes_to_long(data):
+def bytes_to_long(data: bytes):
     """Converts a byte string to a long.
 
     :param data: the byte string to convert.
@@ -56,7 +57,7 @@ def bytes_to_long(data):
     return result
 
 
-def long_to_bytes(data):
+def long_to_bytes(data: int):
     """Converts a long to a byte string.
 
     :param data: the long value to convert.
@@ -69,7 +70,7 @@ def long_to_bytes(data):
     return "".join(encoded[::-1])
 
 
-def checksum_file(path, encoder):
+def checksum_file(path: str, encoder: object):
     """Creates a checksum for a given filepath and encoder.
     Note: resets encoder, existing data will be lost.
 
@@ -85,9 +86,9 @@ def checksum_file(path, encoder):
     return value
 
 
-def checksum_folder(path, encoder):
-    """Creates a checksum for the entire contents of a folder
-    as a single checksum.
+def checksum_folder(path: str, encoder: object):
+    """Creates a checksum for the entire contents of a folder as a single
+    checksum.
 
     Note: resets encoder, existing data will be lost.
 
@@ -104,9 +105,10 @@ def checksum_folder(path, encoder):
     return value
 
 
-def checksum_path(path, encoder, filetype="a", use_cache=True):
-    """Returns a checksum of for a given path, encoder
-    and filetype.
+def checksum_path(
+    path: str, encoder: object, filetype: str = "a", use_cache: bool = True
+):
+    """Returns a checksum of for a given path, encoder and filetype.
 
     Note: resets encoder, existing data will be lost.
 
@@ -126,11 +128,17 @@ def checksum_path(path, encoder, filetype="a", use_cache=True):
         return checksum_folder(path, encoder)
 
 
-def checksum_gen(path, encoders, filetype, recursive, use_cache=True):
+def checksum_gen(
+    path: str,
+    encoders: List[str],
+    filetype: str,
+    recursive: bool,
+    use_cache: bool = True,
+):
     """Checksum generator that yields tuple of (algo, value, path).
 
     :param path: path to a file or folder
-    :param encoders: subclass of Encoder
+    :param encoders: list of encoder names
     :param filetype: one of f (file), d (dir), or a (all)
     :param recursive: recurse subdirs
     :param use_cache: cache results to filesystem
@@ -152,6 +160,38 @@ def checksum_gen(path, encoders, filetype, recursive, use_cache=True):
                 yield (algo, value, path)
 
 
+class CRC32(object):
+    """Simple implementation of CRC32 checksum class."""
+
+    def __init__(self):
+        self._initial = 0
+        self._crc = self._initial
+
+    def update(self, data: bytes):
+        """Update the CRC32 checksum with the given data."""
+        self._crc = zlib.crc32(data, self._crc)
+        return self  # for chaining
+
+    def digest(self):
+        """Return the CRC32 checksum as a 4-byte binary string."""
+        return (self._crc & 0xFFFFFFFF).to_bytes(4, byteorder="big")
+
+    def hexdigest(self):
+        """Return 8-character lowercase hex string."""
+        return format(self._crc & 0xFFFFFFFF, "08x")
+
+    def copy(self):
+        """Return a copy of the CRC32 object."""
+        new = CRC32()
+        new._crc = self._crc
+        return new
+
+    def reset(self):
+        """Reset the CRC32 checksum to its initial value."""
+        self._crc = self._initial
+        return self
+
+
 class Encoder(object):
     """Checksum encoder base class."""
 
@@ -159,8 +199,8 @@ class Encoder(object):
         self.hash = hashlib.sha512()
 
     @classmethod
-    def get(cls, name):
-        # TODO: cache this map
+    def get(cls, name: str):
+        """Returns an instance of the encoder class matching the given name."""
         ENCODER_MAP = dict([(sc.name, sc) for sc in Encoder.__subclasses__()])
         encoder_class = ENCODER_MAP.get(name)
         try:
@@ -169,16 +209,21 @@ class Encoder(object):
             raise Exception(f"Invalid encoder: {name}")
 
     def hexdigest(self):
+        """Return the checksum as a hexadecimal string."""
         return self.hash.hexdigest()
 
     def reset(self):
+        """Reset the checksum encoder to its initial state."""
         self.__init__()
 
-    def update(self, data):
+    def update(self, data: bytes):
+        """Update the checksum with the given data."""
         self.hash.update(data)
 
 
 class MD5Encoder(Encoder):
+    """MD5 Encoder class."""
+
     name = "md5"
 
     def __init__(self):
@@ -187,6 +232,8 @@ class MD5Encoder(Encoder):
 
 
 class SHA256Encoder(Encoder):
+    """SHA256 Encoder class."""
+
     name = "sha256"
 
     def __init__(self):
@@ -195,6 +242,8 @@ class SHA256Encoder(Encoder):
 
 
 class SHA512Encoder(Encoder):
+    """SHA512 Encoder class."""
+
     name = "sha512"
 
     def __init__(self):
@@ -203,6 +252,8 @@ class SHA512Encoder(Encoder):
 
 
 class XXH64Encoder(Encoder):
+    """XXH64 Encoder class."""
+
     name = "xxh64"
 
     def __init__(self):
@@ -211,6 +262,8 @@ class XXH64Encoder(Encoder):
 
 
 class XXH3_64Encoder(Encoder):
+    """XXH3_64 Encoder class."""
+
     name = "xxh3_64"
 
     def __init__(self):
@@ -219,6 +272,8 @@ class XXH3_64Encoder(Encoder):
 
 
 class XXH3_128Encoder(Encoder):
+    """XXH3_128 Encoder class."""
+
     name = "xxh3_128"
 
     def __init__(self):
@@ -226,7 +281,19 @@ class XXH3_128Encoder(Encoder):
         self.hash = xxhash.xxh3_128()
 
 
+class CRC32Encoder(Encoder):
+    """CRC32 Encoder class."""
+
+    name = "crc32"
+
+    def __init__(self):
+        super(CRC32Encoder, self).__init__()
+        self.hash = CRC32()
+
+
 class C4Encoder(SHA512Encoder):
+    """C4 Encoder class."""
+
     base = 58
     charset = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
     idlen = 90
@@ -238,6 +305,7 @@ class C4Encoder(SHA512Encoder):
         super(C4Encoder, self).__init__()
 
     def hexdigest(self):
+        """Convert the SHA512 hash to a C4 checksum."""
         hexstr = ""
         shastr = super(C4Encoder, self).hexdigest()
         value = int(shastr, 16)
@@ -251,13 +319,18 @@ class C4Encoder(SHA512Encoder):
         return hexstr
 
 
-def all_encoder_classes(cls):
-    """Returns all encoder classes"""
+def all_encoder_classes(cls: Encoder):
+    """Returns all encoder classes.
+
+    :param cls: Encoder class
+    :return: set of encoder classes
+    """
     return set(cls.__subclasses__()).union(
         [s for c in cls.__subclasses__() for s in all_encoder_classes(c)]
     )
 
 
+# map of encoder names to encoder classes
 ENCODER_MAP = {}
 
 
@@ -270,18 +343,21 @@ def build_encoder_map():
 build_encoder_map()
 
 
-def get_encoder_class(name):
-    """Returns encoder class matching algo name on demand."""
+def get_encoder_class(name: str):
+    """Returns encoder class matching algo name on demand.
+
+    :param name: name of the encoder class
+    :return: encoder class
+    """
     for cls in all_encoder_classes(Encoder):
         if cls.name == name:
             return cls
     return
 
 
-def dedupe_paths_gen(paths, algo=config.DEFAULT_ALGO):
-    """Generator that takes as input one or more directores or
-    a list of files, generates checksums, and yields a list of
-    duplicates.
+def dedupe_paths_gen(paths: List[str], algo: str = config.DEFAULT_ALGO):
+    """Generator that takes as input one or more directories or a list of files,
+    generates checksums, and yields a list of duplicates.
 
       Step 1: Walk paths and checksum all files.
       Step 2: Look for matches.
@@ -322,7 +398,7 @@ def dedupe_paths_gen(paths, algo=config.DEFAULT_ALGO):
             yield matches
 
 
-def dedupe_cache_gen(target, source, algo=config.DEFAULT_ALGO):
+def dedupe_cache_gen(target: str, source: str, algo: str = config.DEFAULT_ALGO):
     """Generator that takes as input pre-generated cache files and yields a list
     of duplicates.
 
@@ -419,13 +495,12 @@ def dedupe_cache_gen(target, source, algo=config.DEFAULT_ALGO):
             yield [target_filepath, source_filepath]
 
 
-def dedupe_paths(paths, algo=config.DEFAULT_ALGO):
-    """Returns a list of duplicate file pairs for an input
-    list of directories or files.
+def dedupe_paths(paths: List[str], algo=config.DEFAULT_ALGO):
+    """Returns a list of duplicate file pairs for an input list of directories
+    or files.
 
-    Note: Generates new checksums for all paths. It may be
-    faster to pregenerate checksum cache files for all paths
-    then use `dedupe_caches`.
+    Note: Generates new checksums for all paths. It may be faster to pregenerate
+    checksum cache files for all paths then use `dedupe_caches`.
 
     See `dedupe_paths_gen` for more info.
 
@@ -437,13 +512,11 @@ def dedupe_paths(paths, algo=config.DEFAULT_ALGO):
     return [r for r in dedupe_paths_gen(paths, algo=algo)]
 
 
-def dedupe_caches(target, source, algo=config.DEFAULT_ALGO):
-    """Finds duplicate pairs in a given set of target and
-    source cache files.
+def dedupe_caches(target: str, source: str, algo: str = config.DEFAULT_ALGO):
+    """Finds duplicate pairs in a given set of target and source cache files.
 
-    Note: this may be faster than `dedupe_paths`, but it will
-    miss potental matches if all files are not in the target
-    cache file.
+    Note: this may be faster than `dedupe_paths`, but it will miss potential
+    matches if all files are not in the target cache file.
 
     See `dedupe_cache_gen` for more info.
 
@@ -473,15 +546,13 @@ def dedupe_caches(target, source, algo=config.DEFAULT_ALGO):
     return [(t, s) for t, s in dedupe_cache_gen(target, source, algo=algo)]
 
 
-def verify_checksums(path):
-    """Generator that yields a data tuple for hash misses in a
-    previously generated output file. Compares mtimes in the output
-    file with the filesystem.
+def verify_checksums(path: str, start: str = None):
+    """Generator that yields a data tuple for hash misses in a previously
+    generated output file. Compares mtimes in the output file with the
+    filesystem.
 
-    Currently only supports .json files.
-
-    :param path: path to previously generated cache
-    :yields: tuple of (algo, hash, filepath)
+    :param path: path to hash file
+    :yields: tuple of (algo, hash value, filepath)
     """
     from hashio.exporter import get_exporter_class
 
@@ -491,14 +562,17 @@ def verify_checksums(path):
     ext = os.path.splitext(path)[-1]
     exporter_class = get_exporter_class(ext)
     data = exporter_class.read(path)
-    root = os.path.dirname(path)
+
+    if start is None or start == os.getcwd():
+        root = os.path.dirname(path)
+    else:
+        root = start
 
     for filename, metadata in data.items():
         filepath = os.path.join(root, filename)
 
         # iterate over all the hash algos...
         for algo in ENCODER_MAP.keys():
-            # .. look for the algo in the metadata
             if algo not in metadata.keys():
                 continue
 
@@ -506,23 +580,23 @@ def verify_checksums(path):
             if not os.path.exists(filepath):
                 logger.warning("missing: %s", filepath)
                 continue
+            # if mtimes match, skip
             elif metadata.get("mtime") == os.stat(filepath).st_mtime:
                 continue
 
             # if mtimes don't match, re-hash the file
             logger.debug("mtime miss on %s", filepath)
+            old_value = metadata.get(algo)
             encoder = ENCODER_MAP.get(algo)()
-            old_value = metadata[algo]
             new_value = checksum_path(filepath, encoder)
 
-            # old and new hash values don't match, file must have
-            # been changed
+            # hash values don't match, file must have changed
             if (new_value and old_value) and (new_value != old_value):
                 logger.debug("hash miss on %s %s", algo, filepath)
                 yield (algo, new_value, filepath)
 
 
-def verify_caches(source, other, algo=config.DEFAULT_ALGO):
+def verify_caches(source: str, other: str, algo: str = config.DEFAULT_ALGO):
     """
     Compare and verify filenames and hashes in two given files.
 

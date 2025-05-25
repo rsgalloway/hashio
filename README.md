@@ -1,11 +1,11 @@
 hashio
 ======
 
-Custom file and directory checksum tool.
+Custom file and directory checksum and verification tool.
 
 ## Features
 
-- multiple hash algos: c4, md5, sha256, sha512, xxh64
+- multiple hash algos: c4, crc32, md5, sha256, sha512, xxh64
 - recursively runs checksums on files in directory trees
 - ignores predefined file name patterns
 - caches results for better performance
@@ -28,25 +28,61 @@ $ hashio <PATH> [--algo <ALGO>]
 ```
 
 Recursively checksum and gather metadata all the files in a dir tree, and output
-results to a JSON file:
+results to a hash.json file:
 
 ```bash
 $ hashio <DIR>
 ```
 
-Note that files matching patterns defined in `config.IGNORABLE` will be skipped.
+#### Ignorable files
 
-Verify paths in previously generated JSON file by comparing stored mtimes (if
+Note that files matching patterns defined in `config.IGNORABLE` will be skipped,
+unless using the `--force` option:
+
+```bash
+$ hashio .git
+path is ignorable: .git
+$ hashio .git --force
+hashing files: 442file [00:00, 1101.47file/s]
+```
+
+Verify paths in previously generated hash file by comparing stored mtimes (if
 available) or regenerated hash values if mtimes are missing or different:
 
 ```bash
 $ hashio --verify hash.json
 ```
 
-## Environments
+#### Portability
 
-You modifiy settings in the environment stack file `hashio.env`, or create a new
-environment stack:
+To make a portable hash file, use `--start` to make the paths relative:
+
+```bash
+$ hashio <DIR> --start <START> -o hash.json
+```
+
+To verify the data in the hash file, run hashio from the parent dir of the data,
+or set `--start` to the parent dir:
+
+```bash
+$ hashio --verify hash.json
+```
+
+## Environment
+
+The following environment variables are supported, and default settings are in
+the config.py module. 
+
+| Variable      | Description |
+|---------------|-------------|
+| $BUF_SIZE     | chunk size in bytes when reading files |
+| $HASHIO_ALGO  | default hashing algorithm to use |
+| $HASHIO_FILE  | default hash file location |
+| $LOG_LEVEL    | logging level to use (DEBUG, INFO, etc) |
+| $MAX_PROCS    | max number hash processes to spawn |
+
+Optionally, modify the `hashio.env` file if using [envstack](https://github.com/rsgalloway/envstack),
+or create a new env file:
 
 ```bash
 $ cp hashio.env debug.env
@@ -61,7 +97,7 @@ directory):
 
 ```python
 from hashio.worker import HashWorker
-worker = HashWorker(path)
+worker = HashWorker(path, outfile="hash.json")
 worker.run()
 ```
 

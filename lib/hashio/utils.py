@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2024, Ryan Galloway (ryan@rsgalloway.com)
+# Copyright (c) 2024-2025, Ryan Galloway (ryan@rsgalloway.com)
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -44,62 +44,100 @@ ALL_IGNORABLE = re.compile(
 )
 
 
-def get_metadata(path):
-    """Returns dict of file metadata.
+def get_metadata(path: str):
+    """Returns dict of file metadata: atime, ctime, mtime, ino, dev, size,
 
     Note: disk usage for directories not accurate.
     """
     stats = os.stat(path)
     path_type = "file" if os.path.isfile(path) else "dir"
     return {
-        "size": stats.st_size,
+        "name": os.path.basename(path),
         "atime": stats.st_atime,
         "ctime": stats.st_ctime,
         "mtime": stats.st_mtime,
-        "name": os.path.basename(os.path.abspath(path)),
+        "ino": stats.st_ino,
+        "dev": stats.st_dev,
+        "size": stats.st_size,
         "type": path_type,
     }
 
 
-def is_ignorable(path):
+def is_ignorable(path: str):
     """Returns True if path is ignorable. Checks path against patterns
     in the ignorables list, as well as dot files.
 
     :param path: file system path
     :returns: True if filename matches pattern in ignorables list
     """
-
     if path.startswith("."):
         return True
 
     return re.search(ALL_IGNORABLE, path) is not None
 
 
-def is_subpath(filepath, directory):
-    """Returns True if the common prefix of both is equal
-    to `directory`, e.g. if filepath is /a/b/c/d.rst and
-    directory is /a/b the common prefix is /a/b.
+def is_subpath(filepath: str, directory: str):
+    """Returns True if the common prefix of both is equal to `directory`, e.g.
+    if filepath is /a/b/c/d.rst and directory is /a/b the common prefix is /a/b.
+
+    :param filepath: file system path
+    :param directory: file system path
+    :returns: True if filepath is a subpath of directory
     """
     d = os.path.join(os.path.realpath(directory), "")
     f = os.path.realpath(filepath)
     return os.path.commonprefix([f, d]) == d
 
 
-def normalize_path(path, start=os.getcwd()):
-    """Returns a normalized relative path."""
-    npath = os.path.normpath(path)
-    if start is None or is_subpath(path, start):
-        return os.path.relpath(npath, start=start).replace("\\", "/")
-    return os.path.abspath(npath).replace("\\", "/")
+def normalize_path(path: str, start: str = None):
+    """
+    Returns a normalized path:
+
+    - If 'path' is relative, returns it normalized.
+    - If 'path' is absolute and starts with 'start', returns the relative path from 'start'.
+    - Otherwise, returns the absolute normalized path.
+
+    Resolves symbolic links to avoid mismatches between real and symlinked paths.
+
+    :param path: file system path
+    :param start: base path for relative resolution, defaults to current directory
+    :returns: normalized path using forward slashes
+    """
+    if start is None:
+        start = os.getcwd()
+
+    path = os.path.normpath(path)
+
+    if not os.path.isabs(path):
+        return path.replace("\\", "/")
+
+    # resolve symlinks to compare apples to apples
+    real_path = os.path.realpath(path)
+    real_start = os.path.realpath(start)
+
+    if real_path.startswith(real_start + os.sep):
+        rel = os.path.relpath(real_path, real_start)
+        return rel.replace("\\", "/")
+
+    return real_path.replace("\\", "/")
 
 
-def paths_are_equal(a, b):
-    """Returns True if path a is the same as path b."""
+def paths_are_equal(a: str, b: str):
+    """Returns True if path a is the same as path b.
+
+    :param a: file system path
+    :param b: file system path
+    :returns: True if paths are equal
+    """
     return normalize_path(a) == normalize_path(b)
 
 
-def read_file(filepath):
-    """File reader data generator."""
+def read_file(filepath: str):
+    """File reader data generator.
+
+    :param filepath: file to read
+    :returns: file data in chunks
+    """
     with open(filepath, "rb") as f:
         while True:
             data = f.read(config.BUF_SIZE)
@@ -108,25 +146,28 @@ def read_file(filepath):
             yield data
 
 
-def walk(path, filetype="f"):
-    """Generator that yields file and dir paths that
-    are not excluded by the ignorable list in config.
+def walk(path: str, filetype: str = "f", force: bool = False):
+    """Generator that yields file and dir paths that are not excluded by the
+    ignorable list in config.
 
     :param path: the path to the folder being hashed
     :param filetype: file (f), dir (d) or all (a)
+    :param force: return all files and directories
     """
-    if not is_ignorable(path) and os.path.isfile(path):
+    if (force or not is_ignorable(path)) and os.path.isfile(path):
         yield path
+
     path = os.path.abspath(path)
+
     for dirname, dirs, files in os.walk(path, topdown=True):
-        if is_ignorable(dirname):
+        if not force and is_ignorable(dirname):
             continue
         for d in dirs:
-            if is_ignorable(d):
+            if not force and is_ignorable(d):
                 dirs.remove(d)
         if filetype in ("a", "f"):
             for name in files:
-                if not is_ignorable(name):
+                if force or not is_ignorable(name):
                     yield os.path.join(dirname, name)
         if filetype in ("a", "d"):
             yield dirname

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2024, Ryan Galloway (ryan@rsgalloway.com)
+# Copyright (c) 2024-2025, Ryan Galloway (ryan@rsgalloway.com)
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -35,11 +35,11 @@ Contains file export classes and functions.
 
 import json
 import os
-import threading
 import time
 from datetime import datetime
 
 from hashio import config
+from hashio.logger import logger
 from hashio.utils import normalize_path
 
 
@@ -50,14 +50,17 @@ class FileExistsError(Exception):
 class BaseExporter:
     """Exporter base class."""
 
-    def __init__(self, filepath):
+    def __init__(self, filepath: str):
+        dirname = os.path.dirname(filepath)
+        if dirname and not os.path.exists(dirname):
+            os.makedirs(dirname)
         self.filepath = filepath
 
     def close(self):
         raise NotImplementedError
 
     @classmethod
-    def read(self, filepath):
+    def read(cls, filepath: str):
         raise NotImplementedError
 
     def write(self):
@@ -65,20 +68,23 @@ class BaseExporter:
 
 
 class JSONExporter(BaseExporter):
-    """JSON streaming exporter. Opens a filepointer to a .json output file which
-    data can be written to."""
+    """
+    JSON streaming exporter. Opens a .json output file pointer to which data can
+    be written.
+    """
 
     ext = ".json"
 
-    def __init__(self, filepath):
+    def __init__(self, filepath: str):
         super(JSONExporter, self).__init__(filepath)
         fp = open(self.filepath, "w")
         fp.write("{\n")
         fp.close()
 
     def close(self):
-        """Closes file pointer to output file, and writes final closing }.
-        Do not call until writing data is completed.
+        """
+        Closes file pointer to output file, and writes final closing }. Do not
+        call until writing data is completed.
         """
         if config.PLATFORM == "windows":
             offset = -3  # \n\r
@@ -92,23 +98,24 @@ class JSONExporter(BaseExporter):
         fp.close()
 
     @classmethod
-    def read(self, filepath):
-        """Reads and returns the json content at a given filepath, or {} if
-        there is an error.
+    def read(cls, filepath: str):
+        """
+        Reads and returns the json content at a given filepath, or {} if there
+        is an error.
         """
         try:
-            fp = open(filepath)
-            data = json.load(fp)
-            fp.close()
+            with open(filepath) as fp:
+                data = json.load(fp)
             return data
 
         except json.decoder.JSONDecodeError as err:
             print(err)
             return {}
 
-    def write(self, path, data):
-        """Writes `data` to file indexed by `path`. The contents of the cache
-        file should be data dicts indexed by unique paths.
+    def write(self, path: str, data: dict):
+        """
+        Writes `data` to file indexed by `path`. The contents of the hash file
+        should be data dicts indexed by unique paths.
 
             {
                 path1: {data1},
@@ -125,33 +132,29 @@ class JSONExporter(BaseExporter):
         :param data: the data to write
         """
 
-        # normalize the path relative to the output file path
-        path = normalize_path(path, start=os.path.dirname(self.filepath))
-
-        # write json serialized data to output file in a thread-safe manner
         with open(self.filepath, "a+") as f:
-            lock = threading.Lock()
-            lock.acquire()
             try:
                 f.write('    "{0}": {1},\n'.format(path, json.dumps(data, indent=8)))
-            finally:
-                lock.release()
+            except Exception as err:
+                logger.warning("write error: %s", err)
 
 
 class CacheExporter(JSONExporter):
-    """Cache data exporter. Hash caches are files that contain serialized hash
-    and filesystem metadata. All paths in a cache file are relative to the cache
+    """
+    Cache data exporter. Hash caches are files that contain serialized hash and
+    filesystem metadata. All paths in a cache file are relative to the cache
     file itself.
     """
 
     ext = ".json"
 
-    def __init__(self, filepath):
+    def __init__(self, filepath: str):
         super(CacheExporter, self).__init__(filepath)
 
     @classmethod
-    def get_cache(cls, path):
-        """Returns the cache filename for a given path.
+    def get_cache(cls, path: str):
+        """
+        Returns the cache filename for a given path.
 
         The cache file will be written to the directory containing the path. For
         example if the path is `/a/b/c/d` then the cache will be written to
@@ -163,9 +166,9 @@ class CacheExporter(JSONExporter):
         return os.path.join(dirname, config.CACHE_FILENAME)
 
     @classmethod
-    def find(cls, path, key):
-        """Searches for path in cached data, and compares mtimes for a given
-        path.
+    def find(cls, path: str, key: str):
+        """
+        Searches for path in cached data, and compares mtimes for a given path.
 
         :param path: filesystem path
         :param key: key name of cached value to return
@@ -195,7 +198,7 @@ class MHLExporter(BaseExporter):
 
     would be:
 
-      $ hashio <file> --hash md5 -rm -t f -o out.mhl
+      $ hashio <file> --algo md5 -o out.mhl
     """
 
     ext = ".mhl"
@@ -210,7 +213,7 @@ class MHLExporter(BaseExporter):
     # MHL timestamp format
     time_format = "%Y-%m-%dT%H:%M:%SZ"
 
-    def __init__(self, filepath):
+    def __init__(self, filepath: str):
         super(MHLExporter, self).__init__(filepath)
         fp = open(self.filepath, "w")
         fp.write(
@@ -224,13 +227,40 @@ class MHLExporter(BaseExporter):
         fp.write("</hashlist>\n")
         fp.close()
 
-    def timestamp(self, ts=None):
+    def timestamp(self, ts: int = None):
         """Converts timestamp to MHL supported time format."""
         if ts is None:
             ts = int(time.time())
         return datetime.utcfromtimestamp(ts).strftime(self.time_format)
 
-    def write(self, path, data):
+    @classmethod
+    def read(cls, filepath: str):
+        """Reads MHL data from file and returns a list of dicts.
+
+        :param filepath: file path to read
+        :returns: list of dicts with MHL data
+        """
+        from lxml import etree
+
+        try:
+            with open(filepath, "r") as f:
+                tree = etree.parse(f)
+                hashes = tree.xpath("/hashlist/hash")
+                return {
+                    h.findtext("file"): {
+                        "hashdate": h.findtext("hashdate"),
+                        "lastmodificationdate": h.findtext("lastmodificationdate"),
+                        "size": int(h.findtext("size", default="0")),
+                        "file": h.findtext("file"),
+                        "md5": h.findtext("md5", default=""),
+                    }
+                    for h in hashes
+                }
+        except Exception as err:
+            print(err)
+            return []
+
+    def write(self, path: str, data: dict):
         """Writes out data as MHL-specified XML data.
 
         Example minimum hash element:
@@ -279,13 +309,14 @@ class MHLExporter(BaseExporter):
             f.write((etree.tostring(root, pretty_print=True).decode("utf-8")))
 
 
-def all_exporter_classes(cls):
+def all_exporter_classes(cls: BaseExporter):
     """Returns all exporter classes."""
     return set(cls.__subclasses__()).union(
         [s for c in cls.__subclasses__() for s in all_exporter_classes(c)]
     )
 
 
+# maps of all exporter classes to their extensions
 EXPORTER_MAP = {}
 
 
@@ -299,10 +330,11 @@ def build_exporter_map():
         EXPORTER_MAP[cls.ext] = cls
 
 
+# build the exporter map on import
 build_exporter_map()
 
 
-def get_exporter_class(ext):
+def get_exporter_class(ext: str):
     """Returns exporter class matching ext."""
     for cls in all_exporter_classes(BaseExporter):
         if cls.ext == ext:
