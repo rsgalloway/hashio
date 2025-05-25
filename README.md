@@ -34,13 +34,23 @@ results to a hash.json file:
 $ hashio <DIR>
 ```
 
-Note that files matching patterns defined in `config.IGNORABLE` will be skipped.
+#### Ignorable files
 
-Verify paths in previously generated JSON file by comparing stored mtimes (if
+Note that files matching patterns defined in `config.IGNORABLE` will be skipped,
+unless using the `--force` option:
+
+```bash
+$ hashio .git
+path is ignorable: .git
+$ hashio .git --force
+hashing files: 442file [00:00, 1101.47file/s]
+```
+
+Verify paths in previously generated hash file by comparing stored mtimes (if
 available) or regenerated hash values if mtimes are missing or different:
 
 ```bash
-$ hashio --verify [HASHFILE]
+$ hashio --verify hash.json
 ```
 
 #### Portability
@@ -60,8 +70,8 @@ $ hashio --verify hash.json
 
 ## Environment
 
-Default config settings are in the config.py module. The following environment
-variables are supported:
+The following environment variables are supported, and default settings are in
+the config.py module. 
 
 | Variable      | Description |
 |---------------|-------------|
