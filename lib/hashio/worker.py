@@ -171,29 +171,12 @@ class HashWorker:
 
     def explore_path(self, path: str):
         """
-        Walks a dir and adds files to hash queue, and returns a list of found
-        subdirs to add to the search queue.
+        Walks a path and adds files to hash queue.
 
         :param path: search path
         """
-        directories = []
-        nondirectories = []
-        if self.force:
-            if os.path.isdir(path):
-                for filename in os.listdir(path):
-                    fullname = os.path.join(path, filename)
-                    if os.path.isdir(fullname):
-                        directories.append(fullname)
-                    else:
-                        nondirectories.append(fullname)
-            else:
-                nondirectories.append(path)
-            for filename in nondirectories:
-                self.add_hash_to_queue(filename)
-        else:
-            for filename in utils.walk(path, filetype="f"):
-                self.add_hash_to_queue(filename)
-        return directories
+        for filename in utils.walk(path, filetype="f", force=self.force):
+            self.add_hash_to_queue(filename)
 
     def do_hash(self, path: str):
         """
@@ -263,9 +246,7 @@ class HashWorker:
                 task = data["task"]
                 path = data["path"]
                 if task == "search":
-                    dirs = worker.explore_path(path)
-                    for newdir in dirs:
-                        worker.add_path_to_queue(newdir)
+                    worker.explore_path(path)
                 elif task == "hash":
                     worker.do_hash(path)
             except queue.Empty:

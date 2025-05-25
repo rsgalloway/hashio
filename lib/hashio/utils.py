@@ -70,7 +70,6 @@ def is_ignorable(path: str):
     :param path: file system path
     :returns: True if filename matches pattern in ignorables list
     """
-
     if path.startswith("."):
         return True
 
@@ -147,25 +146,28 @@ def read_file(filepath: str):
             yield data
 
 
-def walk(path: str, filetype: str = "f"):
+def walk(path: str, filetype: str = "f", force: bool = False):
     """Generator that yields file and dir paths that are not excluded by the
     ignorable list in config.
 
     :param path: the path to the folder being hashed
     :param filetype: file (f), dir (d) or all (a)
+    :param force: return all files and directories
     """
-    if not is_ignorable(path) and os.path.isfile(path):
+    if (force or not is_ignorable(path)) and os.path.isfile(path):
         yield path
+
     path = os.path.abspath(path)
+
     for dirname, dirs, files in os.walk(path, topdown=True):
-        if is_ignorable(dirname):
+        if not force and is_ignorable(dirname):
             continue
         for d in dirs:
-            if is_ignorable(d):
+            if not force and is_ignorable(d):
                 dirs.remove(d)
         if filetype in ("a", "f"):
             for name in files:
-                if not is_ignorable(name):
+                if force or not is_ignorable(name):
                     yield os.path.join(dirname, name)
         if filetype in ("a", "d"):
             yield dirname

@@ -38,7 +38,7 @@ import multiprocessing
 import os
 import sys
 
-from hashio import __version__, config
+from hashio import __version__, config, utils
 from hashio.encoder import get_encoder_class, verify_caches, verify_checksums
 from hashio.logger import logger
 from hashio.worker import HashWorker
@@ -171,6 +171,10 @@ def main():
 
     if not os.path.exists(args.path):
         print(f"path does not exist: {args.path}")
+        return 2
+
+    if utils.is_ignorable(args.path) and not args.force:
+        print(f"path is ignorable: {args.path}")
         return 2
 
     if os.path.isdir(args.outfile):
