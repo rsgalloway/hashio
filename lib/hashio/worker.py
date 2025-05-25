@@ -134,13 +134,13 @@ class HashWorker:
         self.start = start or os.path.relpath(path)
         self.encoder = get_encoder_class(algo)()
         self.exporter = get_exporter_class(os.path.splitext(outfile)[1])(outfile)
-        self.queue = Queue()  # queue for tasks
-        self.result_queue = Queue()  # queue for results
+        self.queue = Queue()  # task queue
+        self.result_queue = Queue()  # write queue
         self.pool = Pool(self.procs, HashWorker.main, (self,))
         self.done = Event()
         self.writer = Process(
             target=writer_process, args=(self.result_queue, self.exporter)
-        )  # process to write results
+        )
 
     def __str__(self):
         """Returns a string representation of the worker."""

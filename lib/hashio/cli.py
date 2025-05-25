@@ -119,12 +119,19 @@ def parse_args():
 
 
 def watch_progress(worker: HashWorker):
-    """Watch the progress of the worker and update a progress bar."""
+    """Watch the progress of the worker and update a progress bar.
+
+    :param worker: HashWorker instance to monitor
+    """
 
     import time
     from tqdm import tqdm
 
-    pbar = tqdm(desc="hashing files", unit="file")
+    pbar = tqdm(
+        desc="hashing files",
+        disable=(worker.verbose or not sys.stdout.isatty()),
+        unit="file",
+    )
     last = 0
 
     while not worker.done.is_set():
@@ -197,12 +204,10 @@ def main():
     )
 
     try:
-        if not args.verbose:
-            watcher = multiprocessing.Process(target=watch_progress, args=(worker,))
-            watcher.start()
+        watcher = multiprocessing.Process(target=watch_progress, args=(worker,))
+        watcher.start()
         worker.run()
-        if not args.verbose:
-            watcher.join()
+        watcher.join()
 
     except KeyboardInterrupt:
         print("stopping...")
