@@ -34,6 +34,18 @@ results to a hash.json file:
 $ hashio <DIR>
 ```
 
+#### Quick usage with uvx
+
+You can run `hashio` instantly using uvx:
+
+```bash
+$ uvx hashio <DIR>
+```
+
+This downloads and runs `hashio` in a temporary, isolated environment — no
+installs, no virtualenvs, no cleanup needed. Perfect for quick hash verification
+tasks on large directories.
+
 #### Ignorable files
 
 Note that files matching patterns defined in `config.IGNORABLE` will be skipped,

@@ -134,21 +134,25 @@ def watch_progress(worker: HashWorker):
     )
     last = 0
 
-    while not worker.done.is_set():
+    try:
+        while not worker.done.is_set():
+            with worker.progress.get_lock():
+                current = worker.progress.value
+            delta = current - last
+            if delta:
+                pbar.update(delta)
+                last = current
+            time.sleep(0.2)
+    except KeyboardInterrupt:
+        pass
+    finally:
         with worker.progress.get_lock():
-            current = worker.progress.value
-        delta = current - last
-        if delta:
-            pbar.update(delta)
-            last = current
-        time.sleep(0.2)
-
-    # final update in case we missed some
-    with worker.progress.get_lock():
-        final = worker.progress.value
-
-    pbar.update(final - last)
-    pbar.close()
+            final = worker.progress.value
+        try:
+            pbar.update(final - last)
+        except Exception:
+            pass  # tqdm might already be closing or broken
+        pbar.close()
 
 
 def main():
@@ -210,9 +214,9 @@ def main():
         watcher.join()
 
     except KeyboardInterrupt:
-        print("stopping...")
         worker.stop()
-        return 2
+        print("stopping...")
+        sys.exit(0)
 
     finally:
         logger.debug("done in %s seconds", worker.total_time)
