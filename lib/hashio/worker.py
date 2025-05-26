@@ -79,6 +79,8 @@ def writer_process(
             buffer.append(item)
         except Empty:
             pass
+        except (KeyboardInterrupt, EOFError):
+            break  # clean exit
         except Exception as e:
             logger.error("write error: %s", e)
 
@@ -229,11 +231,14 @@ class HashWorker:
         self.done.set()
 
     def stop(self):
-        """Stops worker."""
-        logger.info("stopping %s", str(self))
-        self.pool.terminate()
-        self.exporter.close()
-        self.total_time = time.time() - self.start_time
+        if self.pool:
+            self.pool.terminate()
+            self.pool.join()
+        if self.writer:
+            self.writer.terminate()
+            self.writer.join()
+        self.done.set()
+        logger.debug("stopping %s", multiprocessing.current_process())
 
     @staticmethod
     def main(worker):
@@ -251,6 +256,8 @@ class HashWorker:
                     worker.do_hash(path)
             except queue.Empty:
                 break
+            except (KeyboardInterrupt, EOFError):
+                break  # clean exit
             except Exception as err:
                 logger.error(err)
 
