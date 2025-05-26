@@ -231,12 +231,15 @@ class HashWorker:
         self.done.set()
 
     def stop(self):
+        """Stops the worker and cleans up resources."""
         if self.pool:
             self.pool.terminate()
             self.pool.join()
         if self.writer:
             self.writer.terminate()
             self.writer.join()
+        self.exporter.close()
+        self.total_time = time.time() - self.start_time
         self.done.set()
         logger.debug("stopping %s", multiprocessing.current_process())
 
