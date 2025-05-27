@@ -37,11 +37,21 @@ import argparse
 import multiprocessing
 import os
 import sys
+from datetime import datetime
 
 from hashio import __version__, config, utils
+from hashio.cache import Cache
 from hashio.encoder import get_encoder_class, verify_caches, verify_checksums
 from hashio.logger import logger
 from hashio.worker import HashWorker
+
+
+def format_result(row):
+    """Format a row from the cache query into a human-readable string."""
+    # unpack row data
+    path, mtime, algo, hashval, size, inode, updated_at = row
+    ts = datetime.fromtimestamp(updated_at).isoformat()
+    return f"{ts}  {algo}:{hashval}  {path}"
 
 
 def normalize_args(argv):
@@ -126,6 +136,8 @@ def parse_args():
         action="version",
         version="%(prog)s {version}".format(version=__version__),
     )
+
+    # argument group for verification
     group = parser.add_argument_group("verification")
     group.add_argument(
         "--verify",
@@ -133,6 +145,17 @@ def parse_args():
         metavar="HASHFILE",
         nargs="*",
         help="verify checksums from a previously created hash file",
+    )
+
+    # mutually exclusive group for cache operations
+    cache_group = parser.add_mutually_exclusive_group()
+    cache_group.add_argument(
+        "--query",
+        help="Query cache for path",
+    )
+    cache_group.add_argument(
+        "--cache",
+        action="store_true",
     )
 
     args = parser.parse_args(argv)
@@ -180,6 +203,19 @@ def main():
     """Main thread."""
 
     args = parse_args()
+
+    # query cache or list all entries
+    if args.query:
+        cache = Cache()
+        results = cache.query(args.query, args.algo)
+        for row in results:
+            print(format_result(row))
+        return 0
+    elif args.cache:
+        cache = Cache()
+        for row in cache.query("*"):
+            print(format_result(row))
+        return 0
 
     # hash verification
     if args.verify is not None:

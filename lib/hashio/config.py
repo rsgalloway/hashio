@@ -49,6 +49,9 @@ CACHE_ROOT = {
 }.get(PLATFORM)
 CACHE_FILENAME = os.getenv("HASHIO_FILE", os.path.join(CACHE_ROOT, "hash.json"))
 
+# default database path
+DEFAULT_DB_PATH = os.path.join(CACHE_ROOT, "hash.sql")
+
 # the default hashing algorithm to use
 DEFAULT_ALGO = os.getenv("HASHIO_ALGO", "xxh64")
 

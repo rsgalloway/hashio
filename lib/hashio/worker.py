@@ -40,7 +40,8 @@ import time
 from multiprocessing import Event, Lock, Pool, Process, Queue, Value
 
 from hashio import config, utils
-from hashio.encoder import NullEncoder, checksum_file, get_encoder_class
+from hashio.cache import Cache
+from hashio.encoder import ENCODER_MAP, NullEncoder, checksum_file, get_encoder_class
 from hashio.exporter import BaseExporter, get_exporter_class
 from hashio.logger import logger
 from hashio.utils import get_metadata, normalize_path
@@ -70,6 +71,10 @@ def writer_process(
 
     from queue import Empty
 
+    from hashio.cache import Cache
+
+    cache = Cache()
+
     # ensure the exporter is open
     while True:
         try:
@@ -85,14 +90,34 @@ def writer_process(
             logger.error("write error: %s", e)
 
         if len(buffer) >= batch_size or (time.time() - last_flush) >= flush_interval:
-            for path, data in buffer:
-                exporter.write(path, data)
+            for npath, abspath, data in buffer:
+                exporter.write(npath, data)
+
+                mtime = data.get("mtime")
+                size = data.get("size")
+                inode = data.get("ino")
+                for algo, hashval in data.items():
+                    if algo in ENCODER_MAP and hashval:
+                        if not cache.has(abspath, mtime, algo, hashval):
+                            cache.put(abspath, mtime, algo, hashval, size, inode)
+
             buffer.clear()
             last_flush = time.time()
 
     # final flush
-    for path, data in buffer:
-        exporter.write(path, data)
+    for npath, abspath, data in buffer:
+        exporter.write(npath, data)
+
+        mtime = data.get("mtime")
+        size = data.get("size")
+        inode = data.get("ino")
+        for algo, hashval in data.items():
+            if algo in ENCODER_MAP and hashval:
+                if not cache.has(abspath, mtime, algo, hashval):
+                    cache.put(abspath, mtime, algo, hashval, size, inode)
+
+    cache.commit()
+    cache.close()
 
 
 class HashWorker:
@@ -133,6 +158,7 @@ class HashWorker:
         self.verbose = verbose
         self.progress = Value("i", 0)  # shared int for progress
         self.start = start or os.path.relpath(path)
+        self.cache = Cache()
         self.encoder = get_encoder_class(algo)()
         self.exporter = get_exporter_class(os.path.splitext(outfile)[1])(outfile)
         self.queue = Queue()  # task queue
@@ -180,40 +206,34 @@ class HashWorker:
             self.add_hash_to_queue(filename)
 
     def do_hash(self, path: str):
-        """
-        Checksums a given path. Writes the checksum and file metadata to the
-        exporter.
-
-        :param path: file path
-        """
-        value = checksum_file(path, self.encoder)
-
-        # normalize path to be relative to the start directory
-        npath = normalize_path(path, start=self.start)
-
-        # get metadata for the file
+        algo = self.encoder.name
         metadata = get_metadata(path)
+        mtime = metadata["mtime"]
+        size = metadata["size"]
+        inode = metadata["ino"]
 
-        # add the checksum value to metadata
-        if self.encoder.name != NullEncoder.name:
-            metadata.update({self.encoder.name: value})
+        cached_hash = None
+        if self.cache:
+            cached_hash = self.cache.get(path, mtime, algo)
 
-        # print progress to stdout
+        if cached_hash:
+            # print("+++ cache hit", normalize_path(path, start=self.start))
+            metadata[algo] = cached_hash
+            value = cached_hash
+        else:
+            # print("--- cache miss", normalize_path(path, start=self.start))
+            value = checksum_file(path, self.encoder)
+            metadata[algo] = value
+
         if self.verbose:
-            print(f"{value}  {npath}")
+            print(f"{value}  {normalize_path(path, start=self.start)}")
 
         with self.lock:
-            # if the start directory is not the current working directory,
-            # write the normalized path, otherwise write the original path
-            if self.start != CWD:
-                self.result_queue.put((npath, metadata))
-            else:
-                self.result_queue.put((path, metadata))
-
-            # decrement pending count
+            normalized_path = normalize_path(path, start=self.start)
+            abs_path = os.path.abspath(path)
+            self.result_queue.put((normalized_path, abs_path, metadata))
             self.pending -= 1
 
-        # update progress
         with self.progress.get_lock():
             self.progress.value += 1
 
