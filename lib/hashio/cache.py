@@ -37,6 +37,7 @@ import fnmatch
 import os
 import sqlite3
 
+from datetime import datetime
 from collections import OrderedDict
 from typing import Optional
 
@@ -91,6 +92,8 @@ class Cache:
             )
         """
         )
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA synchronous=NORMAL")
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_entries_path ON entries(path)"
         )
@@ -165,29 +168,54 @@ class Cache:
             (path, mtime, algo, hashval, size, inode),
         )
 
-    def query(self, pattern: str, algo: Optional[str] = None):
+    def query(
+        self, pattern: str, algo: Optional[str] = None, since: Optional[str] = None
+    ):
         """Query the cache for entries matching a pattern.
 
         :param pattern: The pattern to match against file paths.
         :param algo: Optional hashing algorithm to filter results.
+        :param since: Optional timestamp to filter results by last updated time.
         :return: A list of tuples containing matching entries.
         """
-        cur = self.conn.cursor()
+        sql = "SELECT * FROM entries"
+        params = []
+        filters = []
+
+        # algo filter
+        if algo:
+            filters.append("algo = ?")
+            params.append(algo)
+
+        # time filter
+        if since:
+            try:
+                ts = datetime.fromisoformat(since).timestamp()
+                filters.append("updated_at >= ?")
+                params.append(ts)
+            except ValueError:
+                raise ValueError(f"Invalid --since datetime: {since}")
+
+        # base wildcard logic
         if "*" in pattern or "?" in pattern or "[" in pattern:
-            cur.execute("SELECT * FROM entries")
+            self.conn.row_factory = sqlite3.Row
+            cur = self.conn.cursor()
+            cur.execute(sql)
             rows = cur.fetchall()
             return [
                 row
                 for row in rows
-                if fnmatch.fnmatch(row[0], pattern) and (algo is None or row[2] == algo)
+                if fnmatch.fnmatch(row["path"], pattern)
+                and all(row[k] == v for k, v in zip(["algo"], [algo]) if algo)
+                and (not since or row["updated_at"] >= ts)
             ]
         else:
-            if algo:
-                cur.execute(
-                    "SELECT * FROM entries WHERE path=? AND algo=?", (pattern, algo)
-                )
-            else:
-                cur.execute("SELECT * FROM entries WHERE path=?", (pattern,))
+            filters.append("path = ?")
+            params.append(pattern)
+            if filters:
+                sql += " WHERE " + " AND ".join(filters)
+            cur = self.conn.cursor()
+            cur.execute(sql, tuple(params))
             return cur.fetchall()
 
     def commit(self):

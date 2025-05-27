@@ -36,6 +36,7 @@ Contains hash worker class and functions.
 import multiprocessing
 import os
 import queue
+import sqlite3
 import time
 from multiprocessing import Event, Lock, Pool, Process, Queue, Value
 
@@ -93,13 +94,17 @@ def writer_process(
             for npath, abspath, data in buffer:
                 exporter.write(npath, data)
 
-                mtime = data.get("mtime")
-                size = data.get("size")
-                inode = data.get("ino")
-                for algo, hashval in data.items():
-                    if algo in ENCODER_MAP and hashval:
-                        if not cache.has(abspath, mtime, algo, hashval):
-                            cache.put(abspath, mtime, algo, hashval, size, inode)
+                # write to cache
+                try:
+                    mtime = data.get("mtime")
+                    size = data.get("size")
+                    inode = data.get("ino")
+                    for algo, hashval in data.items():
+                        if algo in ENCODER_MAP and hashval:
+                            if not cache.has(abspath, mtime, algo, hashval):
+                                cache.put(abspath, mtime, algo, hashval, size, inode)
+                except sqlite3.Error as e:
+                    logger.warning(f"Cache write error for {abspath}: {e}")
 
             buffer.clear()
             last_flush = time.time()
@@ -108,16 +113,23 @@ def writer_process(
     for npath, abspath, data in buffer:
         exporter.write(npath, data)
 
-        mtime = data.get("mtime")
-        size = data.get("size")
-        inode = data.get("ino")
-        for algo, hashval in data.items():
-            if algo in ENCODER_MAP and hashval:
-                if not cache.has(abspath, mtime, algo, hashval):
-                    cache.put(abspath, mtime, algo, hashval, size, inode)
+        # write to cache
+        try:
+            mtime = data.get("mtime")
+            size = data.get("size")
+            inode = data.get("ino")
+            for algo, hashval in data.items():
+                if algo in ENCODER_MAP and hashval:
+                    if not cache.has(abspath, mtime, algo, hashval):
+                        cache.put(abspath, mtime, algo, hashval, size, inode)
+        except sqlite3.Error as e:
+            logger.warning(f"Cache finalization error: {e}")
 
-    cache.commit()
-    cache.close()
+    try:
+        cache.commit()
+        cache.close()
+    except sqlite3.Error as e:
+        logger.warning(f"Cache finalization error: {e}")
 
 
 class HashWorker:
@@ -206,8 +218,8 @@ class HashWorker:
         algo = self.encoder.name
         metadata = get_metadata(path)
         mtime = metadata["mtime"]
-        size = metadata["size"]
-        inode = metadata["ino"]
+        # size = metadata["size"]
+        # inode = metadata["ino"]
 
         cached_hash = None
         if self.cache:

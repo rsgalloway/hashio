@@ -51,7 +51,8 @@ def format_result(row):
     # unpack row data
     path, mtime, algo, hashval, size, inode, updated_at = row
     ts = datetime.fromtimestamp(updated_at).isoformat()
-    return f"{ts}  {algo}:{hashval}  {path}"
+    hval = f"{algo}:{hashval}"
+    return f"{ts:<20} {inode:<10} {hval:<35} {path}"
 
 
 def normalize_args(argv):
@@ -148,10 +149,14 @@ def parse_args():
     )
 
     # mutually exclusive group for cache operations
-    cache_group = parser.add_mutually_exclusive_group()
+    cache_group = parser.add_argument_group("cache")
     cache_group.add_argument(
         "--query",
         help="Query cache for path",
+    )
+    cache_group.add_argument(
+        "--since",
+        help="Filter results since an ISO 8601 datetime (e.g. 2025-05-26T22:00:00)",
     )
     cache_group.add_argument(
         "--cache",
@@ -207,9 +212,13 @@ def main():
     # query cache or list all entries
     if args.query:
         cache = Cache()
-        results = cache.query(args.query, args.algo)
-        for row in results:
-            print(format_result(row))
+        results = cache.query(args.query, args.algo, args.since)
+        if results:
+            print(f"{'timestamp':<20} {'inode':<10} {'hash':<35} path")
+            for row in results:
+                print(format_result(row))
+        else:
+            print("No matching entries")
         return 0
     elif args.cache:
         cache = Cache()
