@@ -160,8 +160,35 @@ def checksum_gen(
                 yield (algo, value, path)
 
 
+class NullChecksum(object):
+    """A no-op checksum class that does nothing."""
+
+    def update(self, data: bytes):
+        """No-op update method."""
+        return self  # for chaining
+
+    def digest(self):
+        """Return an empty byte string."""
+        return b""
+
+    def hexdigest(self):
+        """Return an empty hex string."""
+        return ""
+
+    def copy(self):
+        """Return a new instance of NullChecksum."""
+        return NullChecksum()
+
+    def reset(self):
+        """No-op reset method."""
+        return self
+
+
 class CRC32(object):
-    """Simple implementation of CRC32 checksum class."""
+    """
+    Simple implementation of CRC32 checksum class. Used by the
+    CRC32Encoder class.
+    """
 
     def __init__(self):
         self._initial = 0
@@ -219,6 +246,16 @@ class Encoder(object):
     def update(self, data: bytes):
         """Update the checksum with the given data."""
         self.hash.update(data)
+
+
+class NullEncoder(Encoder):
+    """Null Encoder class."""
+
+    name = "null"
+
+    def __init__(self):
+        super(NullEncoder, self).__init__()
+        self.hash = NullChecksum()
 
 
 class MD5Encoder(Encoder):

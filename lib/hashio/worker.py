@@ -40,7 +40,7 @@ import time
 from multiprocessing import Event, Lock, Pool, Process, Queue, Value
 
 from hashio import config, utils
-from hashio.encoder import checksum_file, get_encoder_class
+from hashio.encoder import NullEncoder, checksum_file, get_encoder_class
 from hashio.exporter import BaseExporter, get_exporter_class
 from hashio.logger import logger
 from hashio.utils import get_metadata, normalize_path
@@ -194,7 +194,10 @@ class HashWorker:
 
         # get metadata for the file
         metadata = get_metadata(path)
-        metadata.update({self.encoder.name: value})
+
+        # add the checksum value to metadata
+        if self.encoder.name != NullEncoder.name:
+            metadata.update({self.encoder.name: value})
 
         # print progress to stdout
         if self.verbose:
