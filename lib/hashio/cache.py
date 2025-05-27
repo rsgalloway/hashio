@@ -42,6 +42,7 @@ from collections import OrderedDict
 from typing import Optional
 
 from hashio.config import DEFAULT_DB_PATH
+from hashio.logger import logger
 
 
 class LRU:
@@ -101,6 +102,13 @@ class Cache:
             "CREATE INDEX IF NOT EXISTS idx_entries_algo ON entries(algo)"
         )
         self.conn.commit()
+
+    def flush(self):
+        """Flush any pending changes to the database."""
+        try:
+            self.conn.commit()
+        except sqlite3.Error as e:
+            logger.warning(f"SQLite flush error: {e}")
 
     def get(self, path: str, mtime: float, algo: str):
         """Retrieve the hash for a given path, mtime, and algorithm.

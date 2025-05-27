@@ -54,11 +54,32 @@ WAIT_TIME = 0.25
 CWD = os.getcwd()
 
 
+def write_to_cache(cache, abspath, data):
+    """Writes hash data to the cache.
+
+    :param cache: Cache instance to write to
+    :param abspath: absolute path of the file
+    :param data: dictionary containing hash data
+    """
+    try:
+        mtime = data.get("mtime")
+        size = data.get("size")
+        inode = data.get("ino")
+        for algo, hashval in data.items():
+            if algo in ENCODER_MAP and hashval:
+                if not cache.has(abspath, mtime, algo, hashval):
+                    cache.put(abspath, mtime, algo, hashval, size, inode)
+                    cache.flush()
+    except sqlite3.Error as e:
+        logger.warning(f"Cache write error for {abspath}: {e}")
+
+
 def writer_process(
     queue: Queue,
     exporter: BaseExporter,
     flush_interval: float = 1.0,
     batch_size: int = 100,
+    use_cache: bool = True,
 ):
     """A process that writes data from a queue to an exporter.
 
@@ -66,6 +87,7 @@ def writer_process(
     :param exporter: an instance of an exporter to write data to
     :param flush_interval: time interval in seconds to flush data
     :param batch_size: number of items to collect before flushing
+    :param use_cache: whether to use cache for writing data
     """
     buffer = []
     last_flush = time.time()
@@ -74,7 +96,8 @@ def writer_process(
 
     from hashio.cache import Cache
 
-    cache = Cache()
+    # instantiate the cache db
+    cache = Cache() if use_cache else None
 
     # ensure the exporter is open
     while True:
@@ -93,18 +116,8 @@ def writer_process(
         if len(buffer) >= batch_size or (time.time() - last_flush) >= flush_interval:
             for npath, abspath, data in buffer:
                 exporter.write(npath, data)
-
-                # write to cache
-                try:
-                    mtime = data.get("mtime")
-                    size = data.get("size")
-                    inode = data.get("ino")
-                    for algo, hashval in data.items():
-                        if algo in ENCODER_MAP and hashval:
-                            if not cache.has(abspath, mtime, algo, hashval):
-                                cache.put(abspath, mtime, algo, hashval, size, inode)
-                except sqlite3.Error as e:
-                    logger.warning(f"Cache write error for {abspath}: {e}")
+                if cache:
+                    write_to_cache(cache, abspath, data)
 
             buffer.clear()
             last_flush = time.time()
@@ -112,24 +125,16 @@ def writer_process(
     # final flush
     for npath, abspath, data in buffer:
         exporter.write(npath, data)
+        if cache:
+            write_to_cache(cache, abspath, data)
 
-        # write to cache
+    # close the cache db
+    if cache:
         try:
-            mtime = data.get("mtime")
-            size = data.get("size")
-            inode = data.get("ino")
-            for algo, hashval in data.items():
-                if algo in ENCODER_MAP and hashval:
-                    if not cache.has(abspath, mtime, algo, hashval):
-                        cache.put(abspath, mtime, algo, hashval, size, inode)
+            cache.commit()
+            cache.close()
         except sqlite3.Error as e:
             logger.warning(f"Cache finalization error: {e}")
-
-    try:
-        cache.commit()
-        cache.close()
-    except sqlite3.Error as e:
-        logger.warning(f"Cache finalization error: {e}")
 
 
 class HashWorker:
