@@ -100,7 +100,6 @@ class HashWorker:
 
     >>> w = HashWorker(path, outfile="hash.json")
     >>> w.run()
-    >>> pprint(w.results)
     """
 
     def __init__(
