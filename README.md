@@ -8,6 +8,7 @@ Custom file and directory checksum and verification tool.
 - multiple hash algos: c4, crc32, md5, sha256, sha512, xxh64
 - recursively runs checksums on files in directory trees
 - ignores predefined file name patterns
+- collects important file stat metadata
 - caches results for better performance
 
 ## Installation
@@ -67,10 +68,17 @@ $ hashio --verify hash.json
 
 #### Portability
 
-To make a portable hash file, use `--start` to make the paths relative:
+To make a portable hash file, use `-or` to make the paths relative to the
+`hash.json` file :
 
 ```bash
-$ hashio <DIR> --start <START> -o hash.json
+$ hashio <DIR> -or hash.json
+```
+
+or use `--start` to make them relative to the `<START>` value
+
+```bash
+$ hashio <DIR> -o hash.json --start <START>
 ```
 
 To verify the data in the hash file, run hashio from the parent dir of the data,
@@ -100,6 +108,35 @@ or create a new env file:
 $ cp hashio.env debug.env
 $ vi debug.env  # make edits
 $ ./debug.env -- hashio
+```
+
+## Metadata
+
+By default `hashio` collects the following file metadata:
+
+| Key   | Value |
+|-------|-------------|
+| name  | file name |
+| atime | file access time (st_atime) |
+| ctime | file creattion time (st_ctime) |
+| mtime | file modify time (st_mtime) |
+| ino   | file inode (st_ino) |
+| dev   | filesystem device (st_dev) |
+| size  | file size in bytes |
+| type  | path type - (f)ile or (d)irectory |
+
+To walk a directory and collect metadata without peforming file checksums, use
+the "null" hash algo:
+
+```bash
+$ hashio <DIR> -a null
+```
+
+To make "null" the default, update `${HASHIO_ALGO}` in the environment or the
+`hashio.env` file.
+
+```bash
+$ export HASHIO_ALGO=null
 ```
 
 ## Python API

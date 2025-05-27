@@ -44,8 +44,28 @@ from hashio.logger import logger
 from hashio.worker import HashWorker
 
 
+def normalize_args(argv):
+    """Rewrite `-or value` to `-o value -r value`."""
+    new_argv = []
+    skip = False
+    for i, arg in enumerate(argv):
+        if skip:
+            skip = False
+            continue
+        if arg == "-or" and i + 1 < len(argv):
+            val = argv[i + 1]
+            new_argv.extend(["-o", val, "-r", os.path.dirname(val) or "."])
+            skip = True
+        else:
+            new_argv.append(arg)
+    return new_argv
+
+
 def parse_args():
     """Parse command line arguments."""
+
+    # normalize arguments to handle -or value as -o value -r value
+    argv = normalize_args(sys.argv[1:])
 
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
@@ -67,6 +87,7 @@ def parse_args():
         default=config.CACHE_FILENAME,
     )
     parser.add_argument(
+        "-p",
         "--procs",
         type=int,
         metavar="PROCS",
@@ -74,7 +95,7 @@ def parse_args():
         default=config.MAX_PROCS,
     )
     parser.add_argument(
-        "-s",
+        "-r",
         "--start",
         type=str,
         metavar="START",
@@ -114,7 +135,7 @@ def parse_args():
         help="verify checksums from a previously created hash file",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     return args
 
 
