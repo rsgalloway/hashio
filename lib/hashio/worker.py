@@ -66,7 +66,7 @@ def write_to_cache(cache, abspath, data):
         size = data.get("size")
         inode = data.get("ino")
         for algo, hashval in data.items():
-            if algo in ENCODER_MAP and hashval:
+            if algo in ENCODER_MAP:
                 if not cache.has(abspath, mtime, algo, hashval):
                     cache.put(abspath, mtime, algo, hashval, size, inode)
                     cache.flush()
