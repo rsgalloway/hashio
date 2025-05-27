@@ -180,16 +180,14 @@ class HashWorker:
             self.queue.put(data)
 
     def add_path_to_queue(self, path: str):
-        """
-        Add a directory to the search queue.
+        """Add a directory to the search queue.
 
         :param path: search path
         """
         self.add_to_queue({"task": "search", "path": path})
 
     def add_hash_to_queue(self, path: str):
-        """
-        Add a filename to the hash queue.
+        """Add a filename to the hash queue.
 
         :param path: file path
         """
@@ -197,8 +195,7 @@ class HashWorker:
         self.queue.put({"task": "hash", "path": path})
 
     def explore_path(self, path: str):
-        """
-        Walks a path and adds files to hash queue.
+        """Walks a path and adds files to hash queue.
 
         :param path: search path
         """
