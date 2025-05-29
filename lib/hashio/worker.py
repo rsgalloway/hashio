@@ -41,7 +41,6 @@ import time
 from multiprocessing import Event, Lock, Pool, Process, Queue, Value
 
 from hashio import config, utils
-from hashio.cache import Cache
 from hashio.encoder import ENCODER_MAP, NullEncoder, checksum_file, get_encoder_class
 from hashio.exporter import BaseExporter, get_exporter_class
 from hashio.logger import logger
@@ -52,6 +51,19 @@ WAIT_TIME = 0.25
 
 # cache the current working directory
 CWD = os.getcwd()
+
+# per-process cache global singleton
+_worker_cache = None
+
+
+def get_worker_cache():
+    """Returns the worker cache instance."""
+    global _worker_cache
+    if _worker_cache is None:
+        from hashio.cache import Cache
+
+        _worker_cache = Cache()
+    return _worker_cache
 
 
 def write_to_cache(cache, abspath, data):
@@ -175,7 +187,6 @@ class HashWorker:
         self.verbose = verbose
         self.progress = Value("i", 0)  # shared int for progress
         self.start = start or os.path.relpath(path)
-        self.cache = Cache()
         self.encoder = get_encoder_class(algo)()
         self.exporter = get_exporter_class(os.path.splitext(outfile)[1])(outfile)
         self.queue = Queue()  # task queue
@@ -220,30 +231,40 @@ class HashWorker:
             self.add_hash_to_queue(filename)
 
     def do_hash(self, path: str):
+        """Hashes a file and puts the result in the result queue.
+
+        :param path: file path to hash
+        """
         algo = self.encoder.name
         metadata = get_metadata(path)
         mtime = metadata["mtime"]
         # size = metadata["size"]
         # inode = metadata["ino"]
 
-        cached_hash = None
-        if self.cache:
-            cached_hash = self.cache.get(path, mtime, algo)
+        # get the worker cache instance
+        cache = get_worker_cache()
 
+        # nrmalize the path for consistent output
+        normalized_path = normalize_path(path, start=self.start)
+
+        cached_hash = None
+        if cache:
+            cached_hash = cache.get(path, mtime, algo)
+
+        # if the hash is cached, use it; otherwise compute it
         if cached_hash:
-            # print("+++ cache hit", normalize_path(path, start=self.start))
             metadata[algo] = cached_hash
             value = cached_hash
+            extra = " (cached)"
         else:
-            # print("--- cache miss", normalize_path(path, start=self.start))
             value = checksum_file(path, self.encoder)
             metadata[algo] = value
+            extra = ""
 
         if self.verbose:
-            print(f"{value}  {normalize_path(path, start=self.start)}")
+            print(f"{value}  {normalized_path} {extra}")
 
         with self.lock:
-            normalized_path = normalize_path(path, start=self.start)
             abs_path = os.path.abspath(path)
             self.result_queue.put((normalized_path, abs_path, metadata))
             self.pending -= 1
