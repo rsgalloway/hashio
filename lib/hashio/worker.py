@@ -255,7 +255,7 @@ class HashWorker:
         if cached_hash:
             metadata[algo] = cached_hash
             value = cached_hash
-            extra = " (cached)"
+            extra = "(cached)"
         else:
             value = checksum_file(path, self.encoder)
             metadata[algo] = value
