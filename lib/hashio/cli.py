@@ -34,9 +34,11 @@ Contains command line interface for hashio.
 """
 
 import argparse
-import multiprocessing
 import os
 import sys
+import threading
+import time
+from tqdm import tqdm
 from datetime import datetime
 
 from hashio import __version__, config, utils
@@ -168,41 +170,29 @@ def parse_args():
     return args
 
 
-def watch_progress(worker: HashWorker):
-    """Watch the progress of the worker and update a progress bar.
+def start_progress_thread(worker, update_interval=0.2):
+    """Start a thread to monitor worker.progress.value and update tqdm.
 
-    :param worker: HashWorker instance to monitor
+    :param worker: The HashWorker instance to monitor.
+    :param update_interval: How often to update the progress bar (in seconds).
+    :return: The thread that updates the progress bar.
     """
+    pbar = tqdm(desc="hashing files", unit="file", dynamic_ncols=True)
 
-    import time
-    from tqdm import tqdm
-
-    pbar = tqdm(
-        desc="hashing files",
-        disable=(worker.verbose or not sys.stdout.isatty()),
-        unit="file",
-    )
-    last = 0
-
-    try:
+    def watch():
         while not worker.done.is_set():
-            with worker.progress.get_lock():
-                current = worker.progress.value
-            delta = current - last
-            if delta:
-                pbar.update(delta)
-                last = current
-            time.sleep(0.2)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        with worker.progress.get_lock():
-            final = worker.progress.value
-        try:
-            pbar.update(final - last)
-        except Exception:
-            pass  # tqdm might already be closing or broken
+            pbar.n = worker.progress.value
+            pbar.refresh()
+            time.sleep(update_interval)
+
+        # final update to catch any remaining progress
+        pbar.n = worker.progress.value
+        pbar.refresh()
         pbar.close()
+
+    thread = threading.Thread(target=watch, daemon=True)
+    thread.start()
+    return thread
 
 
 def main():
@@ -275,10 +265,9 @@ def main():
     )
 
     try:
-        watcher = multiprocessing.Process(target=watch_progress, args=(worker,))
-        watcher.start()
+        progress_thread = start_progress_thread(worker)
         worker.run()
-        watcher.join()
+        progress_thread.join()
 
     except KeyboardInterrupt:
         worker.stop()
