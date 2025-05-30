@@ -51,7 +51,7 @@ from hashio.worker import HashWorker
 def format_result(row):
     """Format a row from the cache query into a human-readable string."""
     # unpack row data
-    path, mtime, algo, hashval, size, inode, updated_at = row
+    fileid, path, mtime, algo, hashval, size, inode, updated_at = row
     ts = datetime.fromtimestamp(updated_at).isoformat()
     hval = f"{algo}:{hashval}"
     return f"{ts:<20} {inode:<10} {hval:<35} {path}"
