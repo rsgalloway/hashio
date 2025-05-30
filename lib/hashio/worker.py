@@ -298,6 +298,14 @@ class HashWorker:
         self.done.set()
         logger.debug("stopping %s", multiprocessing.current_process())
 
+    def progress_count(self):
+        """Returns the current progress count."""
+        return self.progress.value
+
+    def is_done(self):
+        """Checks if the worker has completed its tasks."""
+        return self.done.is_set()
+
     @staticmethod
     def main(worker):
         """Worker function that walks folders and adds data to the queue."""

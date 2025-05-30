@@ -180,13 +180,13 @@ def start_progress_thread(worker, update_interval=0.2):
     pbar = tqdm(desc="hashing files", unit="file", dynamic_ncols=True)
 
     def watch():
-        while not worker.done.is_set():
-            pbar.n = worker.progress.value
+        while not worker.is_done():
+            pbar.n = worker.progress_count()
             pbar.refresh()
             time.sleep(update_interval)
 
         # final update to catch any remaining progress
-        pbar.n = worker.progress.value
+        pbar.n = worker.progress_count()
         pbar.refresh()
         pbar.close()
 
