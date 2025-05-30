@@ -265,9 +265,11 @@ def main():
     )
 
     try:
-        progress_thread = start_progress_thread(worker)
+        if sys.stdout.isatty():
+            progress_thread = start_progress_thread(worker)
         worker.run()
-        progress_thread.join()
+        if sys.stdout.isatty():
+            progress_thread.join()
 
     except KeyboardInterrupt:
         worker.stop()
