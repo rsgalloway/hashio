@@ -70,6 +70,7 @@ IGNORABLE = [
     "build",
     ".venv*",
     "venv*",
+    "@eaDir*",
     ".jetpart*",
     "*.egg-info",
     "__pycache__",

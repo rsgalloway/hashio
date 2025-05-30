@@ -52,7 +52,7 @@ WAIT_TIME = 0.25
 # cache the current working directory
 CWD = os.getcwd()
 
-# per-process global singletons for cache connections
+# per-process global singleton for cache connections
 _worker_cache = None
 
 
@@ -92,26 +92,50 @@ def writer_process(
     flush_interval: float = 1.0,
     batch_size: int = 100,
     use_cache: bool = True,
+    snapshot_name: str = None,
 ):
-    """A process that writes data from a queue to an exporter.
+    from queue import Empty
+    from hashio.cache import Cache
 
-    :param queue: a multiprocessing Queue containing data to write
-    :param exporter: an instance of an exporter to write data to
-    :param flush_interval: time interval in seconds to flush data
-    :param batch_size: number of items to collect before flushing
-    :param use_cache: whether to use cache for writing data
-    """
     buffer = []
     last_flush = time.time()
 
-    from queue import Empty
-
-    from hashio.cache import Cache
-
-    # instantiate the cache db
     cache = Cache() if use_cache else None
+    snapshot_id = (
+        cache.get_or_create_snapshot(snapshot_name)
+        if (cache and snapshot_name)
+        else None
+    )
 
-    # ensure the exporter is open
+    def handle_buffer():
+        snapshot_file_ids = []
+        for npath, abspath, data in buffer:
+            exporter.write(npath, data)
+
+            if not cache:
+                continue
+
+            mtime = data.get("mtime")
+            size = data.get("size")
+            inode = data.get("ino")
+
+            for algo, hashval in data.items():
+                if algo not in ENCODER_MAP:
+                    continue
+
+                if not cache.has(abspath, mtime, algo, hashval):
+                    file_id = cache.put_file_and_get_id(
+                        abspath, mtime, algo, hashval, size, inode
+                    )
+                else:
+                    file_id = cache.get_file_id(abspath, mtime, algo)
+
+                if snapshot_id and file_id:
+                    snapshot_file_ids.append(file_id)
+
+        if snapshot_id and snapshot_file_ids:
+            cache.batch_add_snapshot_links(snapshot_id, snapshot_file_ids)
+
     while True:
         try:
             item = queue.get(timeout=flush_interval)
@@ -121,26 +145,17 @@ def writer_process(
         except Empty:
             pass
         except (KeyboardInterrupt, EOFError):
-            break  # clean exit
+            break
         except Exception as e:
             logger.error("write error: %s", e)
 
         if len(buffer) >= batch_size or (time.time() - last_flush) >= flush_interval:
-            for npath, abspath, data in buffer:
-                exporter.write(npath, data)
-                if cache:
-                    write_to_cache(cache, abspath, data)
-
+            handle_buffer()
             buffer.clear()
             last_flush = time.time()
 
-    # final flush
-    for npath, abspath, data in buffer:
-        exporter.write(npath, data)
-        if cache:
-            write_to_cache(cache, abspath, data)
+    handle_buffer()
 
-    # close the cache db
     if cache:
         try:
             cache.commit()
@@ -163,6 +178,7 @@ class HashWorker:
         procs: int = config.MAX_PROCS,
         start: str = None,
         algo: str = config.DEFAULT_ALGO,
+        snapshot: str = None,
         force: bool = False,
         verbose: bool = False,
     ):
@@ -173,12 +189,14 @@ class HashWorker:
         :param procs: maximum number of processes to use
         :param start: starting path for relative paths in output
         :param algo: hashing algorithm to use
+        :praam snapshot: snapshot name to use
         :param force: hash all files including ignorable patterns
         :param verbose: if True, print verbose output
         """
         self.path = path
         self.algo = algo
         self.outfile = outfile
+        self.snapshot = snapshot
         self.procs = procs
         self.force = force
         self.lock = Lock()
@@ -194,7 +212,8 @@ class HashWorker:
         self.pool = Pool(self.procs, HashWorker.main, (self,))
         self.done = Event()
         self.writer = Process(
-            target=writer_process, args=(self.result_queue, self.exporter)
+            target=writer_process,
+            args=(self.result_queue, self.exporter, 1.0, 100, True, self.snapshot),
         )
 
     def __str__(self):
@@ -241,7 +260,7 @@ class HashWorker:
         # get the worker cache instance
         cache = get_worker_cache()
 
-        # nrmalize the path for consistent output
+        # normalize the path for consistent output
         normalized_path = normalize_path(path, start=self.start)
 
         cached_hash = None

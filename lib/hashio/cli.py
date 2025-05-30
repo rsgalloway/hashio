@@ -158,6 +158,17 @@ def parse_args():
         "--query",
         help="Query cache for path",
     )
+    parser.add_argument(
+        "--snapshot",
+        metavar="NAME",
+        help="Create a snapshot with given name",
+    )
+    parser.add_argument(
+        "--diff",
+        nargs=2,
+        metavar="SNAPSHOT",
+        help="Diff snapshot(s) or current cache.",
+    )
     cache_group.add_argument(
         "--since",
         help="Filter results since an ISO 8601 datetime (e.g. 2025-05-26T22:00:00)",
@@ -212,11 +223,30 @@ def main():
         else:
             print("No matching entries")
         return 0
+
+    # list all cache entries
     elif args.cache:
         cache = Cache()
         for row in cache.query("*"):
             print(format_result(row))
         return 0
+
+    # diff two snapshots
+    elif args.diff:
+        cache = Cache()
+        diff = cache.diff_snapshots(args.diff[0], args.diff[1])
+
+        for path in diff["added"]:
+            print(f"+ {path}")
+        for path in diff["removed"]:
+            print(f"- {path}")
+        for path in diff["changed"]:
+            print(f"~ {path}")
+        for old_path, new_path in diff["moved"]:
+            print(f"> {old_path} -> {new_path}")
+
+        cache.close()
+        sys.exit(0)
 
     # hash verification
     if args.verify is not None:
@@ -265,6 +295,7 @@ def main():
         procs=args.procs,
         start=args.start,
         algo=args.algo,
+        snapshot=args.snapshot,
         force=args.force,
         verbose=args.verbose,
     )

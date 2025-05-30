@@ -81,7 +81,8 @@ class Cache:
         self.conn = sqlite3.connect(self.db_path)
         self.conn.execute(
             """
-            CREATE TABLE IF NOT EXISTS entries (
+            CREATE TABLE IF NOT EXISTS files (
+                id INTEGER PRIMARY KEY,
                 path TEXT NOT NULL,
                 mtime REAL NOT NULL,
                 algo TEXT NOT NULL,
@@ -89,18 +90,34 @@ class Cache:
                 size INTEGER,
                 inode TEXT,
                 updated_at REAL DEFAULT (strftime('%s','now')),
-                PRIMARY KEY (path, mtime, algo)
+                UNIQUE(path, mtime, algo)
             )
+        """
+        )
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS snapshots (
+                id INTEGER PRIMARY KEY,
+                name TEXT UNIQUE,
+                created_at REAL DEFAULT (strftime('%s','now'))
+            )
+        """
+        )
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS snapshot_files (
+                snapshot_id INTEGER NOT NULL,
+                file_id INTEGER NOT NULL,
+                PRIMARY KEY (snapshot_id, file_id),
+                FOREIGN KEY (snapshot_id) REFERENCES snapshots(id) ON DELETE CASCADE,
+                FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
+            );
         """
         )
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA synchronous=NORMAL")
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_entries_path ON entries(path)"
-        )
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_entries_algo ON entries(algo)"
-        )
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_files_algo ON files(algo)")
         self.conn.commit()
 
     def flush(self):
@@ -121,7 +138,7 @@ class Cache:
         cur = self.conn.cursor()
         cur.execute(
             """
-            SELECT hash FROM entries
+            SELECT hash FROM files
             WHERE path = ? AND mtime = ? AND algo = ?
         """,
             (path, mtime, algo),
@@ -145,7 +162,7 @@ class Cache:
         cur = self.conn.cursor()
         cur.execute(
             """
-            SELECT 1 FROM entries
+            SELECT 1 FROM files
             WHERE path=? AND mtime=? AND algo=? AND hash=?
         """,
             key,
@@ -167,26 +184,36 @@ class Cache:
         :param size: The size of the file.
         :param inode: The inode number of the file.
         """
-        self.conn.execute(
+        cur = self.conn.cursor()
+        cur.execute(
             """
-            INSERT OR REPLACE INTO entries
-            (path, mtime, algo, hash, size, inode, updated_at)
+            INSERT OR IGNORE INTO files (path, mtime, algo, hash, size, inode, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, strftime('%s','now'))
         """,
             (path, mtime, algo, hashval, size, str(inode)),
         )
 
+        # Fetch the ID of the existing or newly inserted row
+        cur.execute(
+            """
+            SELECT id FROM files WHERE path=? AND mtime=? AND algo=?
+        """,
+            (path, mtime, algo),
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
+
     def query(
         self, pattern: str, algo: Optional[str] = None, since: Optional[str] = None
     ):
-        """Query the cache for entries matching a pattern.
+        """Query the cache for files matching a pattern.
 
         :param pattern: The pattern to match against file paths.
         :param algo: Optional hashing algorithm to filter results.
         :param since: Optional timestamp to filter results by last updated time.
-        :return: A list of tuples containing matching entries.
+        :return: A list of tuples containing matching files.
         """
-        sql = "SELECT * FROM entries"
+        sql = "SELECT * FROM files"
         params = []
         filters = []
 
@@ -225,6 +252,210 @@ class Cache:
             cur = self.conn.cursor()
             cur.execute(sql, tuple(params))
             return cur.fetchall()
+
+    def get_file_id(self, path: str, mtime: float, algo: str):
+        """Return the ID of a file entry matching path, mtime, algo.
+
+        :param path: The file path to query.
+        :param mtime: The last modified time of the file.
+        :param algo: The hashing algorithm used.
+        :return: The ID of the file entry if found, otherwise None.
+        """
+        cur = self.conn.cursor()
+        cur.execute(
+            "SELECT id FROM files WHERE path=? AND mtime=? AND algo=?",
+            (path, mtime, algo),
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
+
+    def put_file_and_get_id(
+        self, path: str, mtime: float, algo: str, hashval: str, size: int, inode: int
+    ):
+        """Insert or reuse a file entry, and return its ID."""
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            INSERT OR IGNORE INTO files (path, mtime, algo, hash, size, inode, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, strftime('%s','now'))
+        """,
+            (path, mtime, algo, hashval, size, str(inode)),
+        )
+        return self.get_file_id(path, mtime, algo)
+
+    def get_or_create_snapshot(self, name: str):
+        """Get the ID of an existing snapshot by name, or create it if it
+        doesn't exist.
+
+        :param name: The name of the snapshot to retrieve or create.
+        :return: The ID of the snapshot.
+        """
+        cur = self.conn.cursor()
+        cur.execute("SELECT id FROM snapshots WHERE name = ?", (name,))
+        row = cur.fetchone()
+        if row:
+            return row[0]
+        cur.execute("INSERT INTO snapshots (name) VALUES (?)", (name,))
+        self.conn.commit()
+        return cur.lastrowid
+
+    def get_snapshot_id(self, name: str):
+        """Retrieve the ID of a snapshot by name.
+
+        :param name: The name of the snapshot to retrieve.
+        :return: The ID of the snapshot, or None if it does not exist.
+        """
+        cur = self.conn.cursor()
+        cur.execute("SELECT id FROM snapshots WHERE name = ?", (name,))
+        row = cur.fetchone()
+        return row[0] if row else None
+
+    def get_all_file_ids(self):
+        """Retrieve all file IDs in the database.
+
+        :return: A list of file IDs.
+        """
+        cur = self.conn.cursor()
+        cur.execute("SELECT id FROM files")
+        return [row[0] for row in cur.fetchall()]
+
+    def delete_snapshot(self, name: str):
+        """Delete a snapshot by name.
+
+        :param name: The name of the snapshot to delete.
+        :raises ValueError: If the snapshot does not exist.
+        """
+        self.conn.execute("DELETE FROM snapshots WHERE name = ?", (name,))
+        self.conn.commit()
+
+    def add_to_snapshot(self, snapshot_id: int, path: str, mtime: float, algo: str):
+        """Link an entry to a snapshot.
+
+        :param snapshot_id: The ID of the snapshot to link to.
+        :param path: The file path to link.
+        :param mtime: The last modified time of the file.
+        :param algo: The hashing algorithm used.
+        """
+        self.conn.execute(
+            """
+            INSERT OR IGNORE INTO snapshot_files
+            (snapshot_id, file_path, file_mtime, file_algo)
+            VALUES (?, ?, ?, ?)
+            """,
+            (snapshot_id, path, mtime, algo),
+        )
+
+    def batch_add_snapshot_links(self, snapshot_id: int, file_ids: list):
+        """Batch-insert links between a snapshot and file IDs.
+
+        :param snapshot_id: The ID of the snapshot to link to.
+        :param file_ids: A list of file IDs to link to the snapshot.
+        :raises ValueError: If file_ids is empty.
+        """
+        if not file_ids:
+            return
+        records = [(snapshot_id, fid) for fid in file_ids]
+        self.conn.executemany(
+            """
+            INSERT OR IGNORE INTO snapshot_files (snapshot_id, file_id)
+            VALUES (?, ?)
+        """,
+            records,
+        )
+
+    def list_snapshots(self):
+        """Return all snapshots.
+
+        :return: A list of tuples containing snapshot ID, name, and creation time.
+        """
+        cur = self.conn.cursor()
+        cur.execute(
+            "SELECT id, name, created_at FROM snapshots ORDER BY created_at DESC"
+        )
+        return cur.fetchall()
+
+    def diff_snapshots(self, name1: str, name2: str):
+        """Compare two snapshots and return a diff summary.
+
+        :param name1: The name of the first snapshot.
+        :param name2: The name of the second snapshot.
+        :return: A dictionary with lists of added, removed, changed, and moved files.
+        """
+        cur = self.conn.cursor()
+
+        # Get snapshot IDs
+        cur.execute("SELECT id FROM snapshots WHERE name = ?", (name1,))
+        row1 = cur.fetchone()
+        cur.execute("SELECT id FROM snapshots WHERE name = ?", (name2,))
+        row2 = cur.fetchone()
+
+        if not row1 or not row2:
+            raise ValueError(f"Snapshot not found: {name1 if not row1 else name2}")
+        id1, id2 = row1[0], row2[0]
+
+        diff = {"added": [], "removed": [], "changed": [], "moved": []}
+
+        # added files: in v2, not in v1
+        cur.execute(
+            """
+            SELECT f.path FROM snapshot_files sf2
+            JOIN files f ON f.id = sf2.file_id
+            WHERE sf2.snapshot_id = ?
+            AND sf2.file_id NOT IN (
+                SELECT file_id FROM snapshot_files WHERE snapshot_id = ?
+            )
+        """,
+            (id2, id1),
+        )
+        diff["added"] = [row[0] for row in cur.fetchall()]
+
+        # removed files: in v1, not in v2
+        cur.execute(
+            """
+            SELECT f.path FROM snapshot_files sf1
+            JOIN files f ON f.id = sf1.file_id
+            WHERE sf1.snapshot_id = ?
+            AND sf1.file_id NOT IN (
+                SELECT file_id FROM snapshot_files WHERE snapshot_id = ?
+            )
+        """,
+            (id1, id2),
+        )
+        diff["removed"] = [row[0] for row in cur.fetchall()]
+
+        # changed files: same path in both, but different hash
+        cur.execute(
+            """
+            SELECT f1.path FROM snapshot_files sf1
+            JOIN files f1 ON f1.id = sf1.file_id
+            JOIN snapshot_files sf2 ON sf2.snapshot_id = ? 
+            JOIN files f2 ON f2.id = sf2.file_id
+            WHERE sf1.snapshot_id = ?
+            AND f1.path = f2.path
+            AND f1.hash IS NOT NULL AND f2.hash IS NOT NULL
+            AND f1.hash != f2.hash
+        """,
+            (id2, id1),
+        )
+        diff["changed"] = [row[0] for row in cur.fetchall()]
+
+        # moved files: same hash in both, different path
+        cur.execute(
+            """
+            SELECT DISTINCT f1.hash, f1.path, f2.path
+            FROM snapshot_files sf1
+            JOIN files f1 ON f1.id = sf1.file_id
+            JOIN snapshot_files sf2 ON sf2.snapshot_id = ?
+            JOIN files f2 ON f2.id = sf2.file_id
+            WHERE sf1.snapshot_id = ?
+            AND f1.hash = f2.hash
+            AND f1.path != f2.path
+        """,
+            (id2, id1),
+        )
+        diff["moved"] = [(row[1], row[2]) for row in cur.fetchall()]
+
+        return diff
 
     def commit(self):
         """Commit any pending changes to the database."""
