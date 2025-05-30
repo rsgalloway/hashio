@@ -245,11 +245,11 @@ class HashWorker:
         normalized_path = normalize_path(path, start=self.start)
 
         cached_hash = None
-        if cache:
+        if cache and not self.force:
             cached_hash = cache.get(path, mtime, self.algo)
 
         # if the hash is cached, use it; otherwise compute it
-        if cached_hash:
+        if cached_hash and not self.force:
             metadata[self.algo] = cached_hash
             value = cached_hash
             extra = "(cached)"

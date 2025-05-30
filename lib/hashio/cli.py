@@ -124,6 +124,7 @@ def parse_args():
         default=config.DEFAULT_ALGO,
     )
     parser.add_argument(
+        "-f",
         "--force",
         action="store_true",
         help="skip ignorables",
@@ -240,6 +241,9 @@ def main():
     if not os.path.exists(args.path):
         print(f"path does not exist: {args.path}")
         return 2
+
+    if os.path.isfile(args.path):
+        args.procs = 1
 
     if utils.is_ignorable(args.path) and not args.force:
         print(f"path is ignorable: {args.path}")
