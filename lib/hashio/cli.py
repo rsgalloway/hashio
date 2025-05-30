@@ -254,6 +254,7 @@ def main():
         return 2
 
     # create hash worker and generate checksums
+    # TODO: support progress callback: HashWorker(progress_callback=update_progress)
     worker = HashWorker(
         args.path,
         args.outfile,

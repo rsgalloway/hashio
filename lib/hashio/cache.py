@@ -87,7 +87,7 @@ class Cache:
                 algo TEXT NOT NULL,
                 hash TEXT,
                 size INTEGER,
-                inode INTEGER,
+                inode TEXT,
                 updated_at REAL DEFAULT (strftime('%s','now')),
                 PRIMARY KEY (path, mtime, algo)
             )
@@ -173,7 +173,7 @@ class Cache:
             (path, mtime, algo, hash, size, inode, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, strftime('%s','now'))
         """,
-            (path, mtime, algo, hashval, size, inode),
+            (path, mtime, algo, hashval, size, str(inode)),
         )
 
     def query(
