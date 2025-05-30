@@ -52,7 +52,7 @@ WAIT_TIME = 0.25
 # cache the current working directory
 CWD = os.getcwd()
 
-# per-process cache global singleton
+# per-process global singletons for cache connections
 _worker_cache = None
 
 
@@ -177,6 +177,7 @@ class HashWorker:
         :param verbose: if True, print verbose output
         """
         self.path = path
+        self.algo = algo
         self.outfile = outfile
         self.procs = procs
         self.force = force
@@ -187,7 +188,6 @@ class HashWorker:
         self.verbose = verbose
         self.progress = Value("i", 0)  # shared int for progress
         self.start = start or os.path.relpath(path)
-        self.encoder = get_encoder_class(algo)()
         self.exporter = get_exporter_class(os.path.splitext(outfile)[1])(outfile)
         self.queue = Queue()  # task queue
         self.result_queue = Queue()  # write queue
@@ -235,11 +235,8 @@ class HashWorker:
 
         :param path: file path to hash
         """
-        algo = self.encoder.name
         metadata = get_metadata(path)
         mtime = metadata["mtime"]
-        # size = metadata["size"]
-        # inode = metadata["ino"]
 
         # get the worker cache instance
         cache = get_worker_cache()
@@ -249,16 +246,17 @@ class HashWorker:
 
         cached_hash = None
         if cache:
-            cached_hash = cache.get(path, mtime, algo)
+            cached_hash = cache.get(path, mtime, self.algo)
 
         # if the hash is cached, use it; otherwise compute it
         if cached_hash:
-            metadata[algo] = cached_hash
+            metadata[self.algo] = cached_hash
             value = cached_hash
             extra = "(cached)"
         else:
-            value = checksum_file(path, self.encoder)
-            metadata[algo] = value
+            encoder = get_encoder_class(self.algo)()
+            value = checksum_file(path, encoder)
+            metadata[self.algo] = value
             extra = ""
 
         if self.verbose:

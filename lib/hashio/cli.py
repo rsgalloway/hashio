@@ -151,6 +151,7 @@ def parse_args():
     # mutually exclusive group for cache operations
     cache_group = parser.add_argument_group("cache")
     cache_group.add_argument(
+        "-q",
         "--query",
         help="Query cache for path",
     )
