@@ -97,7 +97,7 @@ def parse_args():
         type=str,
         metavar="OUTFILE",
         help="write results to OUTFILE",
-        default=config.CACHE_FILENAME,
+        default=None,
     )
     parser.add_argument(
         "-p",
@@ -274,12 +274,13 @@ def main():
 
     if os.path.isfile(args.path):
         args.procs = 1
+        args.verbose = True
 
     if utils.is_ignorable(args.path) and not args.force:
         print(f"path is ignorable: {args.path}")
         return 2
 
-    if os.path.isdir(args.outfile):
+    if args.outfile and os.path.isdir(args.outfile):
         print(f"output file cannot be a directory: {args.outfile}")
         return 2
 
@@ -300,11 +301,14 @@ def main():
         verbose=args.verbose,
     )
 
+    # if verbose, disable watcher and use tqdm directly
+    do_watcher = not args.verbose and os.path.isdir(args.path) and sys.stdout.isatty()
+
     try:
-        if sys.stdout.isatty():
+        if do_watcher:
             progress_thread = start_progress_thread(worker)
         worker.run()
-        if sys.stdout.isatty():
+        if do_watcher:
             progress_thread.join()
 
     except KeyboardInterrupt:

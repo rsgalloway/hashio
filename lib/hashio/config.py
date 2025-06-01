@@ -47,7 +47,9 @@ CACHE_ROOT = {
         os.environ.get("LOCALAPPDATA", os.path.join(HOME, "AppData", "Local")), "hashio"
     ),
 }.get(PLATFORM)
-CACHE_FILENAME = os.getenv("HASHIO_FILE", os.path.join(CACHE_ROOT, "hash.json"))
+
+# default cache filename
+CACHE_FILENAME = os.getenv("HASHIO_FILE", "hash.json")
 
 # default database path
 DEFAULT_DB_PATH = os.path.join(CACHE_ROOT, "hash.sql")

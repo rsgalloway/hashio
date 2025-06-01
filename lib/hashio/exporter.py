@@ -153,8 +153,7 @@ class CacheExporter(JSONExporter):
 
     @classmethod
     def get_cache(cls, path: str):
-        """
-        Returns the cache filename for a given path.
+        """Returns the cache filename for a given path.
 
         The cache file will be written to the directory containing the path. For
         example if the path is `/a/b/c/d` then the cache will be written to
@@ -167,8 +166,7 @@ class CacheExporter(JSONExporter):
 
     @classmethod
     def find(cls, path: str, key: str):
-        """
-        Searches for path in cached data, and compares mtimes for a given path.
+        """Searches for path in cached data, and compares mtimes for a given path.
 
         :param path: filesystem path
         :param key: key name of cached value to return

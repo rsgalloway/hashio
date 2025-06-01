@@ -41,8 +41,8 @@ import time
 from multiprocessing import Event, Lock, Pool, Process, Queue, Value
 
 from hashio import config, utils
-from hashio.encoder import ENCODER_MAP, NullEncoder, checksum_file, get_encoder_class
-from hashio.exporter import BaseExporter, get_exporter_class
+from hashio.encoder import ENCODER_MAP, checksum_file
+from hashio.exporter import BaseExporter
 from hashio.logger import logger
 from hashio.utils import get_metadata, normalize_path
 
@@ -54,6 +54,29 @@ CWD = os.getcwd()
 
 # per-process global singleton for cache connections
 _worker_cache = None
+
+
+def get_encoder(algo: str):
+    """Returns an encoder instance based on the algorithm."""
+    from hashio.encoder import get_encoder_class
+
+    encoder_class = get_encoder_class(algo)
+    if not encoder_class:
+        raise ValueError(f"Unsupported algorithm: {algo}")
+    return encoder_class()
+
+
+def get_exporter(outfile: str):
+    """Returns an exporter instance based on the file extension."""
+    from hashio.exporter import get_exporter_class
+
+    if not outfile:
+        return None
+    ext = os.path.splitext(outfile)[1].lower()
+    exporter_class = get_exporter_class(ext)
+    if not exporter_class:
+        raise ValueError(f"Unsupported file extension: {ext}")
+    return exporter_class(outfile)
 
 
 def get_worker_cache():
@@ -110,8 +133,10 @@ def writer_process(
     def handle_buffer():
         snapshot_file_ids = []
         for npath, abspath, data in buffer:
-            exporter.write(npath, data)
-
+            if not npath or not abspath:
+                continue
+            if exporter:
+                exporter.write(npath, data)
             if not cache:
                 continue
 
@@ -156,6 +181,9 @@ def writer_process(
 
     handle_buffer()
 
+    if exporter:
+        exporter.close()
+
     if cache:
         try:
             cache.commit()
@@ -174,7 +202,7 @@ class HashWorker:
     def __init__(
         self,
         path: str = os.getcwd(),
-        outfile: str = config.CACHE_FILENAME,
+        outfile: str = None,
         procs: int = config.MAX_PROCS,
         start: str = None,
         algo: str = config.DEFAULT_ALGO,
@@ -206,7 +234,7 @@ class HashWorker:
         self.verbose = verbose
         self.progress = Value("i", 0)  # shared int for progress
         self.start = start or os.path.relpath(path)
-        self.exporter = get_exporter_class(os.path.splitext(outfile)[1])(outfile)
+        self.exporter = get_exporter(outfile)
         self.queue = Queue()  # task queue
         self.result_queue = Queue()  # write queue
         self.pool = Pool(self.procs, HashWorker.main, (self,))
@@ -273,7 +301,7 @@ class HashWorker:
             value = cached_hash
             extra = "(cached)"
         else:
-            encoder = get_encoder_class(self.algo)()
+            encoder = get_encoder(self.algo)
             value = checksum_file(path, encoder)
             metadata[self.algo] = value
             extra = ""
@@ -300,7 +328,6 @@ class HashWorker:
         self.writer.join()
         self.queue.close()
         self.queue.join_thread()
-        self.exporter.close()
         self.total_time = time.time() - self.start_time
         self.done.set()
 
@@ -312,7 +339,6 @@ class HashWorker:
         if self.writer:
             self.writer.terminate()
             self.writer.join()
-        self.exporter.close()
         self.total_time = time.time() - self.start_time
         self.done.set()
         logger.debug("stopping %s", multiprocessing.current_process())
