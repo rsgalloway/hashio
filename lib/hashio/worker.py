@@ -40,7 +40,7 @@ import time
 from multiprocessing import Event, Lock, Pool, Process, Queue, Value
 
 from hashio import config, utils
-from hashio.encoder import NullEncoder, checksum_file, get_encoder_class
+from hashio.encoder import checksum_file, get_encoder_class
 from hashio.exporter import BaseExporter, get_exporter_class
 from hashio.logger import logger
 from hashio.utils import get_metadata, normalize_path
@@ -65,10 +65,10 @@ def writer_process(
     :param flush_interval: time interval in seconds to flush data
     :param batch_size: number of items to collect before flushing
     """
+    from queue import Empty
+
     buffer = []
     last_flush = time.time()
-
-    from queue import Empty
 
     # ensure the exporter is open
     while True:
@@ -123,6 +123,7 @@ class HashWorker:
         :param verbose: if True, print verbose output
         """
         self.path = path
+        self.algo = algo
         self.outfile = outfile
         self.procs = procs
         self.force = force
@@ -133,7 +134,6 @@ class HashWorker:
         self.verbose = verbose
         self.progress = Value("i", 0)  # shared int for progress
         self.start = start or os.path.relpath(path)
-        self.encoder = get_encoder_class(algo)()
         self.exporter = get_exporter_class(os.path.splitext(outfile)[1])(outfile)
         self.queue = Queue()  # task queue
         self.result_queue = Queue()  # write queue
@@ -186,7 +186,8 @@ class HashWorker:
 
         :param path: file path
         """
-        value = checksum_file(path, self.encoder)
+        encoder = get_encoder_class(self.algo)()
+        value = checksum_file(path, encoder)
 
         # normalize path to be relative to the start directory
         npath = normalize_path(path, start=self.start)
@@ -195,8 +196,7 @@ class HashWorker:
         metadata = get_metadata(path)
 
         # add the checksum value to metadata
-        if self.encoder.name != NullEncoder.name:
-            metadata.update({self.encoder.name: value})
+        metadata.update({self.algo: value})
 
         # print progress to stdout
         if self.verbose:
@@ -244,6 +244,14 @@ class HashWorker:
         self.total_time = time.time() - self.start_time
         self.done.set()
         logger.debug("stopping %s", multiprocessing.current_process())
+
+    def progress_count(self):
+        """Returns the current progress count."""
+        return self.progress.value
+
+    def is_done(self):
+        """Checks if the worker has completed its tasks."""
+        return self.done.is_set()
 
     @staticmethod
     def main(worker):
