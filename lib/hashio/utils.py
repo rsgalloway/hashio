@@ -70,9 +70,6 @@ def is_ignorable(path: str):
     :param path: file system path
     :returns: True if filename matches pattern in ignorables list
     """
-    if path.startswith("."):
-        return True
-
     return re.search(ALL_IGNORABLE, path) is not None
 
 
