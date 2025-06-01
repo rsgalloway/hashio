@@ -309,7 +309,7 @@ def main():
 
     except KeyboardInterrupt:
         worker.stop()
-        print("stopping...")
+        print("\nstopping...")
         sys.exit(0)
 
     finally:
