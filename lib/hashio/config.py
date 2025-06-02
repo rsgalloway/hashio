@@ -68,6 +68,7 @@ IGNORABLE = [
     "*.tmp",
     ".git*",
     ".svn*",
+    "@eaDir*",
     ".pytest_cache*",
     "dist",
     "build",
