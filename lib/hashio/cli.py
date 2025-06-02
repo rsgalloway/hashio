@@ -171,11 +171,7 @@ def parse_args():
     )
     cache_group.add_argument(
         "--since",
-        help="Filter results since an ISO 8601 datetime (e.g. 2025-05-26T22:00:00)",
-    )
-    cache_group.add_argument(
-        "--cache",
-        action="store_true",
+        help="Filter results since an ISO datetime (e.g. YYYY-MM-DDTHH:MM:SS)",
     )
 
     args = parser.parse_args(argv)
@@ -222,13 +218,6 @@ def main():
                 print(format_result(row))
         else:
             print("No matching entries")
-        return 0
-
-    # list all cache entries
-    elif args.cache:
-        cache = Cache()
-        for row in cache.query("*"):
-            print(format_result(row))
         return 0
 
     # diff two snapshots
