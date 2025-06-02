@@ -89,7 +89,7 @@ def get_worker_cache():
     return _worker_cache
 
 
-def write_to_cache(cache, abspath, data):
+def write_to_cache(cache: object, abspath: str, data: dict):
     """Writes hash data to the cache.
 
     :param cache: Cache instance to write to
@@ -117,6 +117,15 @@ def writer_process(
     use_cache: bool = True,
     snapshot_name: str = None,
 ):
+    """Process that writes data from the queue to an output file or cache.
+
+    :param queue: Queue instance to read from
+    :param exporter: Exporter instance to write data to
+    :param flush_interval: time interval to flush data
+    :param batch_size: number of items to process in a batch
+    :param use_cache: whether to use cache for storing file hashes
+    :param snapshot_name: name of the snapshot for cache
+    """
     from queue import Empty
     from hashio.cache import Cache
 
@@ -177,6 +186,7 @@ def writer_process(
             buffer.clear()
             last_flush = time.time()
 
+    # final flush of the buffer
     handle_buffer()
 
     if exporter:
