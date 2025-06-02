@@ -217,7 +217,7 @@ class HashWorker:
         :param procs: maximum number of processes to use
         :param start: starting path for relative paths in output
         :param algo: hashing algorithm to use
-        :praam snapshot: snapshot name to use
+        :param snapshot: snapshot name to use
         :param force: hash all files including ignorable patterns
         :param verbose: if True, print verbose output
         """
