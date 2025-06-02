@@ -460,7 +460,27 @@ class Cache:
 
         diff = {"added": [], "removed": [], "changed": []}
 
-        # added files: in v2, not in v1
+        # changed files: same path in both, but different hash
+        changed_paths = set()
+        cur.execute(
+            """
+            SELECT f1.path
+            FROM snapshot_files sf1
+            JOIN files f1 ON f1.id = sf1.file_id
+            JOIN snapshot_files sf2 ON sf2.snapshot_id = ?
+            JOIN files f2 ON f2.id = sf2.file_id
+            WHERE sf1.snapshot_id = ?
+            AND f1.path = f2.path
+            AND f1.hash IS NOT NULL AND f2.hash IS NOT NULL
+            AND f1.hash != f2.hash
+        """,
+            (id2, id1),
+        )
+        for row in cur.fetchall():
+            changed_paths.add(row[0])
+            diff["changed"].append(row[0])
+
+        # added files: in v2, not in v1 (ecluding changed paths)
         cur.execute(
             """
             SELECT f.path FROM snapshot_files sf2
@@ -472,9 +492,11 @@ class Cache:
         """,
             (id2, id1),
         )
-        diff["added"] = [row[0] for row in cur.fetchall()]
+        for row in cur.fetchall():
+            if row[0] not in changed_paths:
+                diff["added"].append(row[0])
 
-        # removed files: in v1, not in v2
+        # removed files: in v1, not in v2 (ecluding changed paths)
         cur.execute(
             """
             SELECT f.path FROM snapshot_files sf1
@@ -486,23 +508,9 @@ class Cache:
         """,
             (id1, id2),
         )
-        diff["removed"] = [row[0] for row in cur.fetchall()]
-
-        # changed files: same path in both, but different hash
-        cur.execute(
-            """
-            SELECT f1.path FROM snapshot_files sf1
-            JOIN files f1 ON f1.id = sf1.file_id
-            JOIN snapshot_files sf2 ON sf2.snapshot_id = ? 
-            JOIN files f2 ON f2.id = sf2.file_id
-            WHERE sf1.snapshot_id = ?
-            AND f1.path = f2.path
-            AND f1.hash IS NOT NULL AND f2.hash IS NOT NULL
-            AND f1.hash != f2.hash
-        """,
-            (id2, id1),
-        )
-        diff["changed"] = [row[0] for row in cur.fetchall()]
+        for row in cur.fetchall():
+            if row[0] not in changed_paths:
+                diff["removed"].append(row[0])
 
         return diff
 
