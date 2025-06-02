@@ -139,6 +139,47 @@ To make "null" the default, update `${HASHIO_ALGO}` in the environment or the
 $ export HASHIO_ALGO=null
 ```
 
+## Cache File and Snapshots
+
+`hashio` maintains a local SQLite cache file (by default at `~/.cache/hashio/hash.sql`)
+to store previously computed file hashes, metadata, and snapshot history. This
+dramatically speeds up repeated runs and enables powerful diffing capabilities.
+
+#### Snapshots
+
+Snapshots are point-in-time views. You can optionally record a snapshot of the
+current file state using:
+
+```bash
+$ hashio --snapshot SNAPSHOT_NAME
+```
+
+This links all scanned files to a snapshot named SNAPSHOT_NAME, allowing you to:
+
+- Track changes over time
+- Compare file states across points in time
+- Build file history for audit/debugging
+- Generate change reports (diffs)
+
+Each snapshot is stored in the cache and contains only links to file metadata
+entries, no file duplication.
+
+#### Diffing Snapshots
+
+You can compare snapshots using:
+
+```bash
+$ hashio --diff SNAP1 SNAP2
+```
+
+This prints a summary of file-level changes between two snapshots:
+
+```
++ file was added
+- file was removed
+~ file was modified
+```
+
 ## Python API
 
 Generate a `hash.json` file for a given path (Default is the current working
