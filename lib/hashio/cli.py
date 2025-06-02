@@ -238,6 +238,9 @@ def main():
     # hash verification
     if args.verify is not None:
         if len(args.verify) == 0:
+            if not os.path.exists(config.CACHE_FILENAME):
+                print(f"file not found: {config.CACHE_FILENAME}")
+                return 0
             for algo, value, miss in verify_checksums(
                 config.CACHE_FILENAME, start=args.start
             ):
