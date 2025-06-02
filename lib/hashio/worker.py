@@ -125,9 +125,7 @@ def writer_process(
 
     cache = Cache() if use_cache else None
     snapshot_id = (
-        cache.get_or_create_snapshot(snapshot_name)
-        if (cache and snapshot_name)
-        else None
+        cache.replace_snapshot(snapshot_name) if (cache and snapshot_name) else None
     )
 
     def handle_buffer():

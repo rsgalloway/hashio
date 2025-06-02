@@ -137,6 +137,7 @@ class Cache:
         if not os.path.exists(os.path.dirname(self.db_path)):
             os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self.conn = sqlite3.connect(self.db_path)
+        # create files table if it does not exist
         self.conn.execute(
             """
             CREATE TABLE IF NOT EXISTS files (
@@ -152,6 +153,7 @@ class Cache:
             )
         """
         )
+        # create snapshots and snapshot_files tables if they do not exist
         self.conn.execute(
             """
             CREATE TABLE IF NOT EXISTS snapshots (
@@ -172,9 +174,15 @@ class Cache:
             );
         """
         )
+        # enable foreign keys and set performance optimizations
+        self.conn.execute("PRAGMA foreign_keys = ON")
+        # use Write-Ahead Logging for better concurrency
         self.conn.execute("PRAGMA journal_mode=WAL")
+        # set synchronous mode to NORMAL for better performance
         self.conn.execute("PRAGMA synchronous=NORMAL")
+        # set busy timeout to 5 seconds to handle locked database issues
         self.conn.execute("PRAGMA busy_timeout=5000")
+        # create indexes for faster lookups
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_files_algo ON files(algo)")
         self.conn.commit()
@@ -253,7 +261,7 @@ class Cache:
             (path, mtime, algo, hashval, size, str(inode)),
         )
 
-        # Fetch the ID of the existing or newly inserted row
+        # fetch the ID of the existing or newly inserted row
         cur.execute(
             """
             SELECT id FROM files WHERE path=? AND mtime=? AND algo=?
@@ -360,6 +368,15 @@ class Cache:
         cur.execute("INSERT INTO snapshots (name) VALUES (?)", (name,))
         self.conn.commit()
         return cur.lastrowid
+
+    def replace_snapshot(self, name: str):
+        """Deletes any existing snapshot with the same name and creates a fresh one.
+
+        :param name: The name of the snapshot to replace.
+        :return: The ID of the newly created snapshot.
+        """
+        self.delete_snapshot(name)
+        return self.get_or_create_snapshot(name)
 
     def get_snapshot_id(self, name: str):
         """Retrieve the ID of a snapshot by name.
