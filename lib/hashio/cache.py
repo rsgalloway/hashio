@@ -448,7 +448,7 @@ class Cache:
         """
         cur = self.conn.cursor()
 
-        # Get snapshot IDs
+        # get snapshot IDs
         cur.execute("SELECT id FROM snapshots WHERE name = ?", (name1,))
         row1 = cur.fetchone()
         cur.execute("SELECT id FROM snapshots WHERE name = ?", (name2,))
@@ -458,7 +458,7 @@ class Cache:
             raise ValueError(f"Snapshot not found: {name1 if not row1 else name2}")
         id1, id2 = row1[0], row2[0]
 
-        diff = {"added": [], "removed": [], "changed": [], "moved": []}
+        diff = {"added": [], "removed": [], "changed": []}
 
         # added files: in v2, not in v1
         cur.execute(
@@ -503,22 +503,6 @@ class Cache:
             (id2, id1),
         )
         diff["changed"] = [row[0] for row in cur.fetchall()]
-
-        # moved files: same hash in both, different path
-        cur.execute(
-            """
-            SELECT DISTINCT f1.hash, f1.path, f2.path
-            FROM snapshot_files sf1
-            JOIN files f1 ON f1.id = sf1.file_id
-            JOIN snapshot_files sf2 ON sf2.snapshot_id = ?
-            JOIN files f2 ON f2.id = sf2.file_id
-            WHERE sf1.snapshot_id = ?
-            AND f1.hash = f2.hash
-            AND f1.path != f2.path
-        """,
-            (id2, id1),
-        )
-        diff["moved"] = [(row[1], row[2]) for row in cur.fetchall()]
 
         return diff
 

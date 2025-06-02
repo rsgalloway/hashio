@@ -242,8 +242,6 @@ def main():
             print(f"- {path}")
         for path in diff["changed"]:
             print(f"~ {path}")
-        for old_path, new_path in diff["moved"]:
-            print(f"> {old_path} -> {new_path}")
 
         cache.close()
         sys.exit(0)
