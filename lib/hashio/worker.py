@@ -289,6 +289,11 @@ class HashWorker:
         # normalize the path for consistent output
         normalized_path = normalize_path(path, start=self.start)
 
+        # skip if the normalized path is the same as the outfile
+        if normalized_path == self.outfile:
+            return
+
+        # check if the hash is cached
         cached_hash = None
         if cache and not self.force:
             cached_hash = cache.get(path, mtime, self.algo)
