@@ -264,16 +264,16 @@ def main():
         elif len(args.diff) == 2:
             diff = cache.diff_snapshots(args.diff[0], args.diff[1])
 
-            for path in diff["added"]:
-                print(f"+ {path}")
-            for path in diff["removed"]:
-                print(f"- {path}")
-            for path in diff["changed"]:
-                print(f"~ {path}")
-
         else:
             print("Use --diff with 1 or 2 snapshot names.")
             sys.exit(1)
+
+        for path in diff["added"]:
+            print(f"+ {path}")
+        for path in diff["removed"]:
+            print(f"- {path}")
+        for path in diff["changed"]:
+            print(f"~ {path}")
 
         cache.close()
         sys.exit(0)
