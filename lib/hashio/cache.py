@@ -529,6 +529,21 @@ class Cache:
             if row[0] not in changed_paths:
                 diff["removed"].append(row[0])
 
+        # normalize everything into sets for deduplication
+        added_set = set(diff["added"])
+        removed_set = set(diff["removed"])
+        changed_set = set(diff["changed"])
+
+        # if a file appears in both added and removed, but not changed, it's a false positive
+        both_added_and_removed = added_set & removed_set
+
+        # remove those from both lists — likely due to mtime/hash/id issues
+        diff["added"] = sorted(list(added_set - both_added_and_removed))
+        diff["removed"] = sorted(list(removed_set - both_added_and_removed))
+
+        # if it was truly changed, let it appear only in 'changed'
+        diff["changed"] = sorted(list(changed_set))
+
         return diff
 
     def commit(self):
