@@ -34,8 +34,10 @@ Contains global cache classes and functions.
 """
 
 import fnmatch
+import functools
 import os
 import sqlite3
+import time
 
 from datetime import datetime
 from collections import OrderedDict
@@ -45,20 +47,72 @@ from hashio.config import DEFAULT_DB_PATH
 from hashio.logger import logger
 
 
-class LRU:
-    """A simple LRU cache implementation using an OrderedDict."""
+def with_retry(retries: int = 5, delay: float = 0.1, backoff: float = 2.0):
+    """Decorator to retry a function if it raises an OperationalError due to a
+    locked database.
 
-    def __init__(self, maxsize=100_000):
+    :param retries: Number of times to retry the function.
+    :param delay: Initial delay between retries in seconds.
+    :param backoff: Multiplier for the delay after each retry.
+    """
+
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            _delay = delay
+            for i in range(retries):
+                try:
+                    return fn(*args, **kwargs)
+                except sqlite3.OperationalError as e:
+                    if "database is locked" in str(e):
+                        try:
+                            # args[0] is self
+                            if args[0].conn.in_transaction:
+                                args[0].conn.rollback()
+                        except Exception:
+                            pass
+                        time.sleep(_delay)
+                        _delay *= backoff
+                    else:
+                        raise
+            raise RuntimeError(
+                f"{fn.__name__} failed after {retries} retries due to database lock."
+            )
+
+        return wrapper
+
+    return decorator
+
+
+class LRU:
+    """A simple LRU cache implementation using an OrderedDict.
+
+    Usage:
+
+    >>> lru = LRU(maxsize=100)
+    >>> lru.put('key1', 'value1')
+    >>> value = lru.get('key1')  # returns 'value1'
+    >>> lru.put('key2', 'value2')  # adds another item
+    >>> # if maxsize is exceeded, the oldest item will be removed.
+    """
+
+    def __init__(self, maxsize: int = 100_000):
+        """Initialize the LRU cache.
+
+        :param maxsize: Maximum number of items to store in the cache.
+        """
         self.maxsize = maxsize
         self.cache = OrderedDict()
 
-    def get(self, key):
+    def get(self, key: str):
+        """Retrieve a value from the cache by key."""
         if key in self.cache:
             self.cache.move_to_end(key)
             return self.cache[key]
         return None
 
-    def put(self, key, value=True):
+    def put(self, key: str, value: bool = True):
+        """Store a key-value pair in the cache."""
         self.cache[key] = value
         self.cache.move_to_end(key)
         if len(self.cache) > self.maxsize:
@@ -69,6 +123,10 @@ class Cache:
     """A class to manage a SQLite database cache for file hashes."""
 
     def __init__(self, db_path: str = DEFAULT_DB_PATH):
+        """Initialize the cache with a database path.
+
+        :param db_path: The path to the SQLite database file.
+        """
         self.db_path = db_path
         self.conn = None
         self.lru = LRU()
@@ -116,6 +174,7 @@ class Cache:
         )
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA synchronous=NORMAL")
+        self.conn.execute("PRAGMA busy_timeout=5000")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_files_algo ON files(algo)")
         self.conn.commit()
@@ -172,6 +231,7 @@ class Cache:
             self.lru.put(key)
         return exists
 
+    @with_retry()
     def put(
         self, path: str, mtime: float, algo: str, hashval: str, size: int, inode: int
     ):
@@ -269,6 +329,7 @@ class Cache:
         row = cur.fetchone()
         return row[0] if row else None
 
+    @with_retry(retries=10, delay=0.5)
     def put_file_and_get_id(
         self, path: str, mtime: float, algo: str, hashval: str, size: int, inode: int
     ):
@@ -283,6 +344,7 @@ class Cache:
         )
         return self.get_file_id(path, mtime, algo)
 
+    @with_retry()
     def get_or_create_snapshot(self, name: str):
         """Get the ID of an existing snapshot by name, or create it if it
         doesn't exist.
@@ -319,6 +381,7 @@ class Cache:
         cur.execute("SELECT id FROM files")
         return [row[0] for row in cur.fetchall()]
 
+    @with_retry()
     def delete_snapshot(self, name: str):
         """Delete a snapshot by name.
 
@@ -328,6 +391,7 @@ class Cache:
         self.conn.execute("DELETE FROM snapshots WHERE name = ?", (name,))
         self.conn.commit()
 
+    @with_retry()
     def add_to_snapshot(self, snapshot_id: int, path: str, mtime: float, algo: str):
         """Link an entry to a snapshot.
 
@@ -345,6 +409,7 @@ class Cache:
             (snapshot_id, path, mtime, algo),
         )
 
+    @with_retry()
     def batch_add_snapshot_links(self, snapshot_id: int, file_ids: list):
         """Batch-insert links between a snapshot and file IDs.
 
