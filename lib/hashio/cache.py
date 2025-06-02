@@ -448,13 +448,15 @@ class Cache:
     def list_snapshots(self):
         """Return all snapshots.
 
-        :return: A list of tuples containing snapshot ID, name, and creation time.
+        :return: A list of dictionaries containing snapshot IDs, names, and
+            creation times.
         """
         cur = self.conn.cursor()
         cur.execute(
             "SELECT id, name, created_at FROM snapshots ORDER BY created_at DESC"
         )
-        return cur.fetchall()
+        rows = cur.fetchall()
+        return [{"id": row[0], "name": row[1], "created_at": row[2]} for row in rows]
 
     def diff_snapshots(self, name1: str, name2: str):
         """Compare two snapshots and return a diff summary.

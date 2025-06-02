@@ -164,8 +164,13 @@ def parse_args():
         help="Create a snapshot with given name",
     )
     parser.add_argument(
+        "--list-snapshots",
+        action="store_true",
+        help="List all snapshots in the cache",
+    )
+    parser.add_argument(
         "--diff",
-        nargs=2,
+        nargs="+",
         metavar="SNAPSHOT",
         help="Diff snapshot(s) or current cache.",
     )
@@ -220,17 +225,55 @@ def main():
             print("No matching entries")
         return 0
 
+    # list all snapshots
+    elif args.list_snapshots:
+        cache = Cache()
+        snapshots = cache.list_snapshots()
+        if snapshots:
+            for snap in snapshots:
+                ts = datetime.fromtimestamp(snap["created_at"]).isoformat()
+                print(f"name: {snap['name']} (id: {snap['id']}) - created at {ts}")
+        else:
+            print("No snapshots found.")
+        return 0
+
     # diff two snapshots
     elif args.diff:
         cache = Cache()
-        diff = cache.diff_snapshots(args.diff[0], args.diff[1])
 
-        for path in diff["added"]:
-            print(f"+ {path}")
-        for path in diff["removed"]:
-            print(f"- {path}")
-        for path in diff["changed"]:
-            print(f"~ {path}")
+        # diff snapshot vs current state of cache
+        if len(args.diff) == 1 or args.diff[1] == ".":
+            snapname = args.diff[0]
+            snapshot_id = cache.get_snapshot_id(snapname)
+            if snapshot_id is None:
+                print(f"Snapshot not found: {snapname}")
+                sys.exit(1)
+
+            # build a temporary snapshot from current files
+            head_name = "__head__"
+            head_id = cache.get_or_create_snapshot(head_name)
+            file_ids = cache.get_all_file_ids()
+            cache.batch_add_snapshot_links(head_id, file_ids)
+
+            diff = cache.diff_snapshots(snapname, head_name)
+
+            # cleanup head snapshot
+            cache.delete_snapshot(head_name)
+
+        # diff two snapshots
+        elif len(args.diff) == 2:
+            diff = cache.diff_snapshots(args.diff[0], args.diff[1])
+
+            for path in diff["added"]:
+                print(f"+ {path}")
+            for path in diff["removed"]:
+                print(f"- {path}")
+            for path in diff["changed"]:
+                print(f"~ {path}")
+
+        else:
+            print("Use --diff with 1 or 2 snapshot names.")
+            sys.exit(1)
 
         cache.close()
         sys.exit(0)
