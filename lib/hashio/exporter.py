@@ -68,10 +68,8 @@ class BaseExporter:
 
 
 class JSONExporter(BaseExporter):
-    """
-    JSON streaming exporter. Opens a .json output file pointer to which data can
-    be written.
-    """
+    """JSON streaming exporter. Opens a .json output file pointer to which data
+    can be written."""
 
     ext = ".json"
 
@@ -82,8 +80,7 @@ class JSONExporter(BaseExporter):
         fp.close()
 
     def close(self):
-        """
-        Closes file pointer to output file, and writes final closing }. Do not
+        """Closes file pointer to output file, and writes final closing }. Do not
         call until writing data is completed.
         """
         if config.PLATFORM == "windows":
@@ -99,8 +96,7 @@ class JSONExporter(BaseExporter):
 
     @classmethod
     def read(cls, filepath: str):
-        """
-        Reads and returns the json content at a given filepath, or {} if there
+        """Reads and returns the json content at a given filepath, or {} if there
         is an error.
         """
         try:
@@ -140,11 +136,9 @@ class JSONExporter(BaseExporter):
 
 
 class CacheExporter(JSONExporter):
-    """
-    Cache data exporter. Hash caches are files that contain serialized hash and
-    filesystem metadata. All paths in a cache file are relative to the cache
-    file itself.
-    """
+    """Cache data exporter. Hash caches are files that contain serialized hash
+    and filesystem metadata. All paths in a cache file are relative to the cache
+    file itself."""
 
     ext = ".json"
 
@@ -305,6 +299,41 @@ class MHLExporter(BaseExporter):
         # write json serialized data to output file
         with open(self.filepath, "a+") as f:
             f.write((etree.tostring(root, pretty_print=True).decode("utf-8")))
+
+
+class TXTExporter(BaseExporter):
+    """TXT flatfile exporter. Writes a newline-separated list of 'hash path'
+    values. Does not export file metadata."""
+
+    ext = ".txt"
+
+    def __init__(self, filepath: str, algo: str = None):
+        super(TXTExporter, self).__init__(filepath)
+        self.fp = open(self.filepath, "w")
+        self.algo = algo
+
+    def close(self):
+        """Closes the output file."""
+        self.fp.close()
+
+    def write(self, path: str, data: dict):
+        """Writes 'hash path' values to the output file. Uses the default
+        algo key to get the hash value $HASHIO_ALGO.
+
+        :param path: path-like string
+        :param data: the data to write, expected to contain the algo key
+        """
+        # if no algo is specified, try to find one in the data
+        if not self.algo:
+            from hashio.encoder import ENCODER_MAP
+
+            for algo in ENCODER_MAP:
+                if data.get(algo):
+                    self.algo = algo
+                    break
+
+        value = data.get(self.algo, "")
+        self.fp.write(f"{value} {path}\n")
 
 
 def all_exporter_classes(cls: BaseExporter):
