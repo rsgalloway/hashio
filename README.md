@@ -6,6 +6,7 @@ Custom file and directory checksum and verification tool.
 ## Features
 
 - multiple hash algos: c4, crc32, md5, sha256, sha512, xxh64
+- supports multiple output options: json, txt and mhl
 - recursively runs checksums on files in directory trees
 - ignores predefined file name patterns
 - collects important file stat metadata
