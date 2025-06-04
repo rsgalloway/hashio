@@ -169,7 +169,7 @@ entries, no file duplication.
 You can compare snapshots using:
 
 ```bash
-$ hashio --diff SNAP1 SNAP2
+$ hashio --diff SNAP1 SNAP2 [--start PATH]
 ```
 
 This prints a summary of file-level changes between two snapshots:
@@ -197,4 +197,12 @@ Verify pre-generated checksums stored in a `hash.json` file:
 from hashio.encoder import verify_checksums
 for algo, value, miss in verify_checksums("hash.json"):
     print("{0} {1}".format(algo, miss))
+```
+
+Generate a checksum of a folder:
+
+```python
+from hashio.encoder import checksum_folder, XXH64Encoder
+encoder = XXH64Encoder()
+value = checksum_folder(folder, encoder)
 ```
