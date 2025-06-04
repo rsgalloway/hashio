@@ -10,6 +10,8 @@ MANIFEST
 __pycache__
 hash.json
 hash.sql
+hash.txt
+hash.mhl
 *.mhl
 tmp/
 .env

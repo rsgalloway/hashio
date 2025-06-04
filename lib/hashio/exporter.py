@@ -316,6 +316,31 @@ class TXTExporter(BaseExporter):
         """Closes the output file."""
         self.fp.close()
 
+    @classmethod
+    def read(cls, filepath: str):
+        """Reads TXT data from `filepath` and returns a dict with filepath as key
+        and metadata dict containing the hash.
+
+        Note: Currently only supports a single hash value per file, using the
+        default algorithm.
+
+        :param filepath: file path to read
+        :returns: dict with filepath as key and metadata dict as value
+        """
+        result = {}
+        try:
+            with open(filepath, "r") as f:
+                for line in f:
+                    parts = line.strip().split(" ", 1)
+                    if len(parts) == 2:
+                        checksum, path = parts
+                        result[path] = {
+                            config.DEFAULT_ALGO: checksum,
+                        }
+        except Exception as err:
+            print(err)
+        return result
+
     def write(self, path: str, data: dict):
         """Writes 'hash path' values to the output file. Uses the default
         algo key to get the hash value $HASHIO_ALGO.
