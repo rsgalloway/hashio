@@ -241,6 +241,9 @@ def main():
     elif args.diff:
         cache = Cache()
 
+        # common root path for comparing diffs
+        start_root = os.path.abspath(args.start or os.getcwd())
+
         # diff snapshot vs current state of cache
         if len(args.diff) == 1 or args.diff[1] == ".":
             snapname = args.diff[0]
@@ -267,6 +270,17 @@ def main():
         else:
             print("Use --diff with 1 or 2 snapshot names.")
             sys.exit(1)
+
+        def is_under_root(path, root):
+            try:
+                return os.path.commonpath([os.path.abspath(path), root]) == root
+            except ValueError:
+                # handles cases like windows drive mismatch
+                return False
+
+        # filter paths by start_root if provided
+        for k in diff:
+            diff[k] = [p for p in diff[k] if is_under_root(p, start_root)]
 
         for path in diff["added"]:
             print(f"+ {path}")
