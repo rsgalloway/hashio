@@ -170,7 +170,7 @@ def parse_args():
     )
     parser.add_argument(
         "--diff",
-        nargs="+",
+        nargs=2,
         metavar="SNAPSHOT",
         help="Diff snapshot(s) or current cache.",
     )
@@ -243,33 +243,7 @@ def main():
 
         # common root path for comparing diffs
         start_root = os.path.abspath(args.start or os.getcwd())
-
-        # diff snapshot vs current state of cache
-        if len(args.diff) == 1 or args.diff[1] == ".":
-            snapname = args.diff[0]
-            snapshot_id = cache.get_snapshot_id(snapname)
-            if snapshot_id is None:
-                print(f"Snapshot not found: {snapname}")
-                sys.exit(1)
-
-            # build a temporary snapshot from current files
-            head_name = "__head__"
-            head_id = cache.get_or_create_snapshot(head_name, args.start)
-            file_ids = cache.get_all_file_ids()
-            cache.batch_add_snapshot_links(head_id, file_ids)
-
-            diff = cache.diff_snapshots(snapname, head_name, force=args.force)
-
-            # cleanup head snapshot
-            cache.delete_snapshot(head_name)
-
-        # diff two snapshots
-        elif len(args.diff) == 2:
-            diff = cache.diff_snapshots(args.diff[0], args.diff[1], force=args.force)
-
-        else:
-            print("Use --diff with 1 or 2 snapshot names.")
-            sys.exit(1)
+        diff = cache.diff_snapshots(args.diff[0], args.diff[1], force=args.force)
 
         def is_under_root(path, root):
             try:
