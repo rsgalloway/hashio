@@ -159,6 +159,7 @@ class Cache:
             CREATE TABLE IF NOT EXISTS snapshots (
                 id INTEGER PRIMARY KEY,
                 name TEXT UNIQUE,
+                path TEXT,
                 created_at REAL DEFAULT (strftime('%s','now'))
             )
         """
@@ -353,11 +354,12 @@ class Cache:
         return self.get_file_id(path, mtime, algo)
 
     @with_retry()
-    def get_or_create_snapshot(self, name: str):
+    def get_or_create_snapshot(self, name: str, path: str = None):
         """Get the ID of an existing snapshot by name, or create it if it
         doesn't exist.
 
         :param name: The name of the snapshot to retrieve or create.
+        :param path: Optional root path for the snapshot.
         :return: The ID of the snapshot.
         """
         cur = self.conn.cursor()
@@ -365,18 +367,19 @@ class Cache:
         row = cur.fetchone()
         if row:
             return row[0]
-        cur.execute("INSERT INTO snapshots (name) VALUES (?)", (name,))
+        cur.execute("INSERT INTO snapshots (name, path) VALUES (?, ?)", (name, path))
         self.conn.commit()
         return cur.lastrowid
 
-    def replace_snapshot(self, name: str):
+    def replace_snapshot(self, name: str, path: str = None):
         """Deletes any existing snapshot with the same name and creates a fresh one.
 
         :param name: The name of the snapshot to replace.
+        :param path: Optional root path for the snapshot.
         :return: The ID of the newly created snapshot.
         """
         self.delete_snapshot(name)
-        return self.get_or_create_snapshot(name)
+        return self.get_or_create_snapshot(name, path)
 
     def get_snapshot_id(self, name: str):
         """Retrieve the ID of a snapshot by name.
@@ -453,29 +456,38 @@ class Cache:
         """
         cur = self.conn.cursor()
         cur.execute(
-            "SELECT id, name, created_at FROM snapshots ORDER BY created_at DESC"
+            "SELECT id, name, path, created_at FROM snapshots ORDER BY created_at DESC"
         )
         rows = cur.fetchall()
-        return [{"id": row[0], "name": row[1], "created_at": row[2]} for row in rows]
+        return [
+            {"id": row[0], "name": row[1], "path": row[2], "created_at": row[3]}
+            for row in rows
+        ]
 
-    def diff_snapshots(self, name1: str, name2: str):
+    def diff_snapshots(self, name1: str, name2: str, force: bool = False):
         """Compare two snapshots and return a diff summary.
 
         :param name1: The name of the first snapshot.
         :param name2: The name of the second snapshot.
+        :param force: If True, force the diff even if root paths don't match.
         :return: A dictionary with lists of added, removed, changed, and moved files.
         """
         cur = self.conn.cursor()
 
         # get snapshot IDs
-        cur.execute("SELECT id FROM snapshots WHERE name = ?", (name1,))
+        cur.execute("SELECT id, path FROM snapshots WHERE name = ?", (name1,))
         row1 = cur.fetchone()
-        cur.execute("SELECT id FROM snapshots WHERE name = ?", (name2,))
+        cur.execute("SELECT id, path FROM snapshots WHERE name = ?", (name2,))
         row2 = cur.fetchone()
 
         if not row1 or not row2:
             raise ValueError(f"Snapshot not found: {name1 if not row1 else name2}")
-        id1, id2 = row1[0], row2[0]
+
+        id1, root1 = row1
+        id2, root2 = row2
+
+        if root1 != root2 and not force:
+            raise ValueError(f"Snapshots have different paths: {root1} != {root2}")
 
         diff = {"added": [], "removed": [], "changed": []}
 

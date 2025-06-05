@@ -110,6 +110,7 @@ def write_to_cache(cache: object, abspath: str, data: dict):
 
 
 def writer_process(
+    path: str,
     queue: Queue,
     exporter: BaseExporter,
     flush_interval: float = 1.0,
@@ -134,7 +135,9 @@ def writer_process(
 
     cache = Cache() if use_cache else None
     snapshot_id = (
-        cache.replace_snapshot(snapshot_name) if (cache and snapshot_name) else None
+        cache.replace_snapshot(snapshot_name, path)
+        if (cache and snapshot_name)
+        else None
     )
 
     def handle_buffer():
@@ -249,7 +252,15 @@ class HashWorker:
         self.done = Event()
         self.writer = Process(
             target=writer_process,
-            args=(self.result_queue, self.exporter, 1.0, 100, True, self.snapshot),
+            args=(
+                path,
+                self.result_queue,
+                self.exporter,
+                1.0,
+                100,
+                True,
+                self.snapshot,
+            ),
         )
 
     def __str__(self):

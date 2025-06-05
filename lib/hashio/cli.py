@@ -232,7 +232,7 @@ def main():
         if snapshots:
             for snap in snapshots:
                 ts = datetime.fromtimestamp(snap["created_at"]).isoformat()
-                print(f"name: {snap['name']} (id: {snap['id']}) - created at {ts}")
+                print(f"{snap['name']}  {snap['path']} - created at {ts}")
         else:
             print("No snapshots found.")
         return 0
@@ -254,18 +254,18 @@ def main():
 
             # build a temporary snapshot from current files
             head_name = "__head__"
-            head_id = cache.get_or_create_snapshot(head_name)
+            head_id = cache.get_or_create_snapshot(head_name, args.start)
             file_ids = cache.get_all_file_ids()
             cache.batch_add_snapshot_links(head_id, file_ids)
 
-            diff = cache.diff_snapshots(snapname, head_name)
+            diff = cache.diff_snapshots(snapname, head_name, force=args.force)
 
             # cleanup head snapshot
             cache.delete_snapshot(head_name)
 
         # diff two snapshots
         elif len(args.diff) == 2:
-            diff = cache.diff_snapshots(args.diff[0], args.diff[1])
+            diff = cache.diff_snapshots(args.diff[0], args.diff[1], force=args.force)
 
         else:
             print("Use --diff with 1 or 2 snapshot names.")
