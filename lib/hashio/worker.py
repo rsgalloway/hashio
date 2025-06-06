@@ -89,26 +89,6 @@ def get_worker_cache():
     return _worker_cache
 
 
-def write_to_cache(cache: object, abspath: str, data: dict):
-    """Writes hash data to the cache.
-
-    :param cache: Cache instance to write to
-    :param abspath: absolute path of the file
-    :param data: dictionary containing hash data
-    """
-    try:
-        mtime = data.get("mtime")
-        size = data.get("size")
-        inode = data.get("ino")
-        for algo, hashval in data.items():
-            if algo in ENCODER_MAP:
-                if not cache.has(abspath, mtime, algo, hashval):
-                    cache.put(abspath, mtime, algo, hashval, size, inode)
-                    cache.flush()
-    except sqlite3.Error as e:
-        logger.warning(f"Cache write error for {abspath}: {e}")
-
-
 def writer_process(
     path: str,
     queue: Queue,
