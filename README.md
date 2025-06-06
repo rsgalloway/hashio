@@ -22,26 +22,28 @@ $ pip install -U hashio
 
 ## Usage
 
-Checksum one or more files or directories using one or more hash algorithms
-(default is xxh64):
-
-```bash
-$ hashio <PATH> [--algo <ALGO>]
-```
-
 Recursively checksum and gather metadata all the files in a dir tree, and output
 results to a hash.json file:
 
 ```bash
-$ hashio <DIR>
+$ hashio <PATH> -o hash.json [--algo ALGO]
 ```
+
+`hashio` supports .json, .txt or .mhl output formats:
+
+```bash
+$ hashio <PATH> -o hash.txt
+```
+
+If no output file is specified, the hash results are stored in a cache, defined
+by `${HASHIO_DB}`.
 
 #### Quick usage with uvx
 
 You can run `hashio` instantly using uvx:
 
 ```bash
-$ uvx hashio <DIR>
+$ uvx hashio <PATH>
 ```
 
 This downloads and runs `hashio` in a temporary, isolated environment — no
@@ -98,6 +100,7 @@ the config.py module.
 |---------------|-------------|
 | $BUF_SIZE     | chunk size in bytes when reading files |
 | $HASHIO_ALGO  | default hashing algorithm to use |
+| $HASHIO_DB    | hashio cache db location |
 | $HASHIO_FILE  | default hash file location |
 | $LOG_LEVEL    | logging level to use (DEBUG, INFO, etc) |
 | $MAX_PROCS    | max number hash processes to spawn |
