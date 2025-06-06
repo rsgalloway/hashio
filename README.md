@@ -6,6 +6,7 @@ Custom file and directory checksum and verification tool.
 ## Features
 
 - multiple hash algos: c4, crc32, md5, sha256, sha512, xxh64
+- supports multiple output options: json, txt and mhl
 - recursively runs checksums on files in directory trees
 - ignores predefined file name patterns
 - collects important file stat metadata
@@ -21,26 +22,28 @@ $ pip install -U hashio
 
 ## Usage
 
-Checksum one or more files or directories using one or more hash algorithms
-(default is xxh64):
-
-```bash
-$ hashio <PATH> [--algo <ALGO>]
-```
-
 Recursively checksum and gather metadata all the files in a dir tree, and output
 results to a hash.json file:
 
 ```bash
-$ hashio <DIR>
+$ hashio <PATH> -o hash.json [--algo ALGO]
 ```
+
+`hashio` supports .json, .txt or .mhl output formats:
+
+```bash
+$ hashio <PATH> -o hash.txt
+```
+
+If no output file is specified, the hash results are stored in a cache, defined
+by `${HASHIO_DB}`.
 
 #### Quick usage with uvx
 
 You can run `hashio` instantly using uvx:
 
 ```bash
-$ uvx hashio <DIR>
+$ uvx hashio <PATH>
 ```
 
 This downloads and runs `hashio` in a temporary, isolated environment — no
@@ -97,6 +100,7 @@ the config.py module.
 |---------------|-------------|
 | $BUF_SIZE     | chunk size in bytes when reading files |
 | $HASHIO_ALGO  | default hashing algorithm to use |
+| $HASHIO_DB    | hashio cache db location |
 | $HASHIO_FILE  | default hash file location |
 | $LOG_LEVEL    | logging level to use (DEBUG, INFO, etc) |
 | $MAX_PROCS    | max number hash processes to spawn |
@@ -139,6 +143,47 @@ To make "null" the default, update `${HASHIO_ALGO}` in the environment or the
 $ export HASHIO_ALGO=null
 ```
 
+## Cache File and Snapshots
+
+`hashio` maintains a local SQLite cache file (by default at `~/.cache/hashio/hash.sql`)
+to store previously computed file hashes, metadata, and snapshot history. This
+dramatically speeds up repeated runs and enables powerful diffing capabilities.
+
+#### Snapshots
+
+Snapshots are point-in-time views. You can optionally record a snapshot of the
+current file state using:
+
+```bash
+$ hashio --snapshot SNAPSHOT_NAME
+```
+
+This links all scanned files to a snapshot named SNAPSHOT_NAME, allowing you to:
+
+- Track changes over time
+- Compare file states across points in time
+- Build file history for audit/debugging
+- Generate change reports (diffs)
+
+Each snapshot is stored in the cache and contains only links to file metadata
+entries, no file duplication.
+
+#### Diffing Snapshots
+
+You can compare snapshots using:
+
+```bash
+$ hashio --diff SNAP1 SNAP2 [--start PATH]
+```
+
+This prints a summary of file-level changes between two snapshots:
+
+```
++ file was added
+- file was removed
+~ file was modified
+```
+
 ## Python API
 
 Generate a `hash.json` file for a given path (Default is the current working
@@ -156,4 +201,12 @@ Verify pre-generated checksums stored in a `hash.json` file:
 from hashio.encoder import verify_checksums
 for algo, value, miss in verify_checksums("hash.json"):
     print("{0} {1}".format(algo, miss))
+```
+
+Generate a checksum of a folder:
+
+```python
+from hashio.encoder import checksum_folder, XXH64Encoder
+encoder = XXH64Encoder()
+value = checksum_folder(folder, encoder)
 ```

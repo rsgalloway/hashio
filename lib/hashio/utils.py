@@ -65,14 +65,11 @@ def get_metadata(path: str):
 
 def is_ignorable(path: str):
     """Returns True if path is ignorable. Checks path against patterns
-    in the ignorables list, as well as dot files.
+    in the ignorables list.
 
     :param path: file system path
     :returns: True if filename matches pattern in ignorables list
     """
-    if path.startswith("."):
-        return True
-
     return re.search(ALL_IGNORABLE, path) is not None
 
 

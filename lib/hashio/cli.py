@@ -39,11 +39,22 @@ import sys
 import threading
 import time
 from tqdm import tqdm
+from datetime import datetime
 
 from hashio import __version__, config, utils
+from hashio.cache import Cache
 from hashio.encoder import get_encoder_class, verify_caches, verify_checksums
 from hashio.logger import logger
 from hashio.worker import HashWorker
+
+
+def format_result(row):
+    """Format a row from the cache query into a human-readable string."""
+    # unpack row data
+    fileid, path, mtime, algo, hashval, size, inode, updated_at = row
+    ts = datetime.fromtimestamp(updated_at).isoformat()
+    hval = f"{algo}:{hashval}"
+    return f"{ts:<20} {inode:<10} {hval:<35} {path}"
 
 
 def normalize_args(argv):
@@ -86,7 +97,7 @@ def parse_args():
         type=str,
         metavar="OUTFILE",
         help="write results to OUTFILE",
-        default=config.CACHE_FILENAME,
+        default=None,
     )
     parser.add_argument(
         "-p",
@@ -113,6 +124,7 @@ def parse_args():
         default=config.DEFAULT_ALGO,
     )
     parser.add_argument(
+        "-f",
         "--force",
         action="store_true",
         help="skip ignorables",
@@ -128,6 +140,8 @@ def parse_args():
         action="version",
         version="%(prog)s {version}".format(version=__version__),
     )
+
+    # argument group for verification
     group = parser.add_argument_group("verification")
     group.add_argument(
         "--verify",
@@ -135,6 +149,34 @@ def parse_args():
         metavar="HASHFILE",
         nargs="*",
         help="verify checksums from a previously created hash file",
+    )
+
+    # mutually exclusive group for cache operations
+    cache_group = parser.add_argument_group("cache")
+    cache_group.add_argument(
+        "-q",
+        "--query",
+        help="Query cache for path",
+    )
+    parser.add_argument(
+        "--snapshot",
+        metavar="NAME",
+        help="Create a snapshot with given name",
+    )
+    parser.add_argument(
+        "--list-snapshots",
+        action="store_true",
+        help="List all snapshots in the cache",
+    )
+    parser.add_argument(
+        "--diff",
+        nargs=2,
+        metavar="SNAPSHOT",
+        help="Diff snapshot(s) or current cache.",
+    )
+    cache_group.add_argument(
+        "--since",
+        help="Filter results since an ISO datetime (e.g. YYYY-MM-DDTHH:MM:SS)",
     )
 
     args = parser.parse_args(argv)
@@ -171,9 +213,65 @@ def main():
 
     args = parse_args()
 
+    # query cache or list all entries
+    if args.query:
+        cache = Cache()
+        results = cache.query(args.query, args.algo, args.since)
+        if results:
+            print(f"{'timestamp':<20} {'inode':<10} {'hash':<35} path")
+            for row in results:
+                print(format_result(row))
+        else:
+            print("No matching entries")
+        return 0
+
+    # list all snapshots
+    elif args.list_snapshots:
+        cache = Cache()
+        snapshots = cache.list_snapshots()
+        if snapshots:
+            for snap in snapshots:
+                ts = datetime.fromtimestamp(snap["created_at"]).isoformat()
+                print(f"{snap['name']}  {snap['path']} - created at {ts}")
+        else:
+            print("No snapshots found.")
+        return 0
+
+    # diff two snapshots
+    elif args.diff:
+        cache = Cache()
+
+        # common root path for comparing diffs
+        start_root = os.path.abspath(args.start or os.getcwd())
+        diff = cache.diff_snapshots(args.diff[0], args.diff[1], force=args.force)
+
+        def is_under_root(path, root):
+            try:
+                return os.path.commonpath([os.path.abspath(path), root]) == root
+            except ValueError:
+                # handles cases like windows drive mismatch
+                return False
+
+        # filter paths by start_root if provided
+        for k in diff:
+            diff[k] = [p for p in diff[k] if is_under_root(p, start_root)]
+
+        for path in diff["added"]:
+            print(f"+ {path}")
+        for path in diff["removed"]:
+            print(f"- {path}")
+        for path in diff["changed"]:
+            print(f"~ {path}")
+
+        cache.close()
+        sys.exit(0)
+
     # hash verification
     if args.verify is not None:
         if len(args.verify) == 0:
+            if not os.path.exists(config.CACHE_FILENAME):
+                print(f"file not found: {config.CACHE_FILENAME}")
+                return 0
             for algo, value, miss in verify_checksums(
                 config.CACHE_FILENAME, start=args.start
             ):
@@ -195,11 +293,15 @@ def main():
         print(f"path does not exist: {args.path}")
         return 2
 
+    if os.path.isfile(args.path):
+        args.procs = 1
+        args.verbose = True
+
     if utils.is_ignorable(args.path) and not args.force:
         print(f"path is ignorable: {args.path}")
         return 2
 
-    if os.path.isdir(args.outfile):
+    if args.outfile and os.path.isdir(args.outfile):
         print(f"output file cannot be a directory: {args.outfile}")
         return 2
 
@@ -208,21 +310,26 @@ def main():
         return 2
 
     # create hash worker and generate checksums
+    # TODO: support progress callback: HashWorker(progress_callback=update_progress)
     worker = HashWorker(
         args.path,
         args.outfile,
         procs=args.procs,
         start=args.start,
         algo=args.algo,
+        snapshot=args.snapshot,
         force=args.force,
         verbose=args.verbose,
     )
 
+    # if verbose, disable watcher and use tqdm directly
+    do_watcher = not args.verbose and os.path.isdir(args.path) and sys.stdout.isatty()
+
     try:
-        if sys.stdout.isatty():
+        if do_watcher:
             progress_thread = start_progress_thread(worker)
         worker.run()
-        if sys.stdout.isatty():
+        if do_watcher:
             progress_thread.join()
 
     except KeyboardInterrupt:

@@ -47,7 +47,12 @@ CACHE_ROOT = {
         os.environ.get("LOCALAPPDATA", os.path.join(HOME, "AppData", "Local")), "hashio"
     ),
 }.get(PLATFORM)
-CACHE_FILENAME = os.getenv("HASHIO_FILE", os.path.join(CACHE_ROOT, "hash.json"))
+
+# default cache filename
+CACHE_FILENAME = os.getenv("HASHIO_FILE", "hash.json")
+
+# default database path
+DEFAULT_DB_PATH = os.getenv("HASHIO_DB", os.path.join(CACHE_ROOT, "hash.sql"))
 
 # the default hashing algorithm to use
 DEFAULT_ALGO = os.getenv("HASHIO_ALGO", "xxh64")
@@ -63,6 +68,8 @@ IGNORABLE = [
     "*.tmp",
     ".git*",
     ".svn*",
+    "@eaDir*",
+    ".pytest_cache*",
     "dist",
     "build",
     ".venv*",

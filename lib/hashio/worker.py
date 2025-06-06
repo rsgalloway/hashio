@@ -36,12 +36,13 @@ Contains hash worker class and functions.
 import multiprocessing
 import os
 import queue
+import sqlite3
 import time
 from multiprocessing import Event, Lock, Pool, Process, Queue, Value
 
 from hashio import config, utils
-from hashio.encoder import checksum_file, get_encoder_class
-from hashio.exporter import BaseExporter, get_exporter_class
+from hashio.encoder import ENCODER_MAP, checksum_file
+from hashio.exporter import BaseExporter
 from hashio.logger import logger
 from hashio.utils import get_metadata, normalize_path
 
@@ -51,26 +52,105 @@ WAIT_TIME = 0.25
 # cache the current working directory
 CWD = os.getcwd()
 
+# per-process global singleton for cache connections
+_worker_cache = None
+
+
+def get_encoder(algo: str):
+    """Returns an encoder instance based on the algorithm."""
+    from hashio.encoder import get_encoder_class
+
+    encoder_class = get_encoder_class(algo)
+    if not encoder_class:
+        raise ValueError(f"Unsupported algorithm: {algo}")
+    return encoder_class()
+
+
+def get_exporter(outfile: str):
+    """Returns an exporter instance based on the file extension."""
+    from hashio.exporter import get_exporter_class
+
+    if not outfile:
+        return None
+    ext = os.path.splitext(outfile)[1].lower()
+    exporter_class = get_exporter_class(ext)
+    if not exporter_class:
+        raise ValueError(f"Unsupported file extension: {ext}")
+    return exporter_class(outfile)
+
+
+def get_worker_cache():
+    """Returns the worker cache instance."""
+    global _worker_cache
+    if _worker_cache is None:
+        from hashio.cache import Cache
+
+        _worker_cache = Cache()
+    return _worker_cache
+
 
 def writer_process(
+    path: str,
     queue: Queue,
     exporter: BaseExporter,
     flush_interval: float = 1.0,
     batch_size: int = 100,
+    use_cache: bool = True,
+    snapshot_name: str = None,
 ):
-    """A process that writes data from a queue to an exporter.
+    """Process that writes data from the queue to an output file or cache.
 
-    :param queue: a multiprocessing Queue containing data to write
-    :param exporter: an instance of an exporter to write data to
-    :param flush_interval: time interval in seconds to flush data
-    :param batch_size: number of items to collect before flushing
+    :param queue: Queue instance to read from
+    :param exporter: Exporter instance to write data to
+    :param flush_interval: time interval to flush data
+    :param batch_size: number of items to process in a batch
+    :param use_cache: whether to use cache for storing file hashes
+    :param snapshot_name: name of the snapshot for cache
     """
     from queue import Empty
+    from hashio.cache import Cache
 
     buffer = []
     last_flush = time.time()
 
-    # ensure the exporter is open
+    cache = Cache() if use_cache else None
+    snapshot_id = (
+        cache.replace_snapshot(snapshot_name, path)
+        if (cache and snapshot_name)
+        else None
+    )
+
+    def handle_buffer():
+        snapshot_file_ids = []
+        for npath, abspath, data in buffer:
+            if not npath or not abspath:
+                continue
+            if exporter:
+                exporter.write(npath, data)
+            if not cache:
+                continue
+
+            mtime = data.get("mtime")
+            size = data.get("size")
+            inode = data.get("ino")
+
+            for algo, hashval in data.items():
+                if algo not in ENCODER_MAP:
+                    continue
+
+                if not cache.has(abspath, mtime, algo, hashval):
+                    file_id = cache.put_file_and_get_id(
+                        abspath, mtime, algo, hashval, size, inode
+                    )
+                else:
+                    file_id = cache.get_file_id(abspath, mtime, algo)
+
+                if snapshot_id and file_id:
+                    snapshot_file_ids.append(file_id)
+
+        if snapshot_id and snapshot_file_ids:
+            cache.batch_add_snapshot_links(snapshot_id, snapshot_file_ids)
+
     while True:
         try:
             item = queue.get(timeout=flush_interval)
@@ -80,19 +160,27 @@ def writer_process(
         except Empty:
             pass
         except (KeyboardInterrupt, EOFError):
-            break  # clean exit
+            break
         except Exception as e:
             logger.error("write error: %s", e)
 
         if len(buffer) >= batch_size or (time.time() - last_flush) >= flush_interval:
-            for path, data in buffer:
-                exporter.write(path, data)
+            handle_buffer()
             buffer.clear()
             last_flush = time.time()
 
-    # final flush
-    for path, data in buffer:
-        exporter.write(path, data)
+    # final flush of the buffer
+    handle_buffer()
+
+    if exporter:
+        exporter.close()
+
+    if cache:
+        try:
+            cache.commit()
+            cache.close()
+        except sqlite3.Error as e:
+            logger.warning(f"Cache finalization error: {e}")
 
 
 class HashWorker:
@@ -105,10 +193,11 @@ class HashWorker:
     def __init__(
         self,
         path: str = os.getcwd(),
-        outfile: str = config.CACHE_FILENAME,
+        outfile: str = None,
         procs: int = config.MAX_PROCS,
         start: str = None,
         algo: str = config.DEFAULT_ALGO,
+        snapshot: str = None,
         force: bool = False,
         verbose: bool = False,
     ):
@@ -119,12 +208,14 @@ class HashWorker:
         :param procs: maximum number of processes to use
         :param start: starting path for relative paths in output
         :param algo: hashing algorithm to use
+        :param snapshot: snapshot name to use
         :param force: hash all files including ignorable patterns
         :param verbose: if True, print verbose output
         """
         self.path = path
         self.algo = algo
         self.outfile = outfile
+        self.snapshot = snapshot
         self.procs = procs
         self.force = force
         self.lock = Lock()
@@ -134,13 +225,22 @@ class HashWorker:
         self.verbose = verbose
         self.progress = Value("i", 0)  # shared int for progress
         self.start = start or os.path.relpath(path)
-        self.exporter = get_exporter_class(os.path.splitext(outfile)[1])(outfile)
+        self.exporter = get_exporter(outfile)
         self.queue = Queue()  # task queue
         self.result_queue = Queue()  # write queue
         self.pool = Pool(self.procs, HashWorker.main, (self,))
         self.done = Event()
         self.writer = Process(
-            target=writer_process, args=(self.result_queue, self.exporter)
+            target=writer_process,
+            args=(
+                path,
+                self.result_queue,
+                self.exporter,
+                1.0,
+                100,
+                True,
+                self.snapshot,
+            ),
         )
 
     def __str__(self):
@@ -154,16 +254,14 @@ class HashWorker:
             self.queue.put(data)
 
     def add_path_to_queue(self, path: str):
-        """
-        Add a directory to the search queue.
+        """Add a directory to the search queue.
 
         :param path: search path
         """
         self.add_to_queue({"task": "search", "path": path})
 
     def add_hash_to_queue(self, path: str):
-        """
-        Add a filename to the hash queue.
+        """Add a filename to the hash queue.
 
         :param path: file path
         """
@@ -171,8 +269,7 @@ class HashWorker:
         self.queue.put({"task": "hash", "path": path})
 
     def explore_path(self, path: str):
-        """
-        Walks a path and adds files to hash queue.
+        """Walks a path and adds files to hash queue.
 
         :param path: search path
         """
@@ -180,40 +277,47 @@ class HashWorker:
             self.add_hash_to_queue(filename)
 
     def do_hash(self, path: str):
+        """Hashes a file and puts the result in the result queue.
+
+        :param path: file path to hash
         """
-        Checksums a given path. Writes the checksum and file metadata to the
-        exporter.
-
-        :param path: file path
-        """
-        encoder = get_encoder_class(self.algo)()
-        value = checksum_file(path, encoder)
-
-        # normalize path to be relative to the start directory
-        npath = normalize_path(path, start=self.start)
-
-        # get metadata for the file
         metadata = get_metadata(path)
+        mtime = metadata["mtime"]
 
-        # add the checksum value to metadata
-        metadata.update({self.algo: value})
+        # get the worker cache instance
+        cache = get_worker_cache()
 
-        # print progress to stdout
+        # normalize the path for consistent output
+        normalized_path = normalize_path(path, start=self.start)
+
+        # skip if the normalized path is the same as the outfile
+        if normalized_path == self.outfile:
+            return
+
+        # check if the hash is cached
+        cached_hash = None
+        if cache and not self.force:
+            cached_hash = cache.get(path, mtime, self.algo)
+
+        # if the hash is cached, use it; otherwise compute it
+        if cached_hash and not self.force:
+            metadata[self.algo] = cached_hash
+            value = cached_hash
+            extra = "(cached)"
+        else:
+            encoder = get_encoder(self.algo)
+            value = checksum_file(path, encoder)
+            metadata[self.algo] = value
+            extra = ""
+
         if self.verbose:
-            print(f"{value}  {npath}")
+            print(f"{value}  {normalized_path} {extra}")
 
         with self.lock:
-            # if the start directory is not the current working directory,
-            # write the normalized path, otherwise write the original path
-            if self.start != CWD:
-                self.result_queue.put((npath, metadata))
-            else:
-                self.result_queue.put((path, metadata))
-
-            # decrement pending count
+            abs_path = os.path.abspath(path)
+            self.result_queue.put((normalized_path, abs_path, metadata))
             self.pending -= 1
 
-        # update progress
         with self.progress.get_lock():
             self.progress.value += 1
 
@@ -228,7 +332,6 @@ class HashWorker:
         self.writer.join()
         self.queue.close()
         self.queue.join_thread()
-        self.exporter.close()
         self.total_time = time.time() - self.start_time
         self.done.set()
 
@@ -240,7 +343,6 @@ class HashWorker:
         if self.writer:
             self.writer.terminate()
             self.writer.join()
-        self.exporter.close()
         self.total_time = time.time() - self.start_time
         self.done.set()
         logger.debug("stopping %s", multiprocessing.current_process())
