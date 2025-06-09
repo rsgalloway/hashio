@@ -20,6 +20,16 @@ The easiest way to install:
 $ pip install -U hashio
 ```
 
+Note: Starting with hashio 0.4.0, a SQLite-backed cache is used by default.
+If your Python installation does not include sqlite3, either:
+
+- Rebuild Python with SQLite support (e.g. libsqlite3-dev, sqlite-devel)
+- Or install an earlier version:
+
+```bash
+pip install 'hashio<0.4.0'
+```
+
 ## Usage
 
 Recursively checksum and gather metadata all the files in a dir tree, and output
