@@ -106,14 +106,15 @@ $ hashio --verify hash.json
 The following environment variables are supported, and default settings are in
 the config.py module. 
 
-| Variable      | Description |
-|---------------|-------------|
-| $BUF_SIZE     | chunk size in bytes when reading files |
-| $HASHIO_ALGO  | default hashing algorithm to use |
-| $HASHIO_DB    | hashio cache db location |
-| $HASHIO_FILE  | default hash file location |
-| $LOG_LEVEL    | logging level to use (DEBUG, INFO, etc) |
-| $MAX_PROCS    | max number hash processes to spawn |
+| Variable     | Description |
+|--------------|-------------|
+| BUF_SIZE     | chunk size in bytes when reading files |
+| HASHIO_ALGO  | default hashing algorithm to use |
+| HASHIO_DB    | hashio cache db location |
+| HASHIO_FILE  | default hash file location |
+| HASHIO_IGNORABLE | comma separated list of ignorable file patterns |
+| LOG_LEVEL    | logging level to use (DEBUG, INFO, etc) |
+| MAX_PROCS    | max number hash processes to spawn |
 
 Optionally, modify the `hashio.env` file if using [envstack](https://github.com/rsgalloway/envstack),
 or create a new env file:

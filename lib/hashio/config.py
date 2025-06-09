@@ -74,6 +74,8 @@ IGNORABLE = [
     "build",
     ".venv*",
     "venv*",
+    "#recycle",
+    "#snapshot",
     ".jetpart*",
     "*.egg-info",
     "__pycache__",
@@ -84,6 +86,9 @@ IGNORABLE = [
     ".Trash*",
     "lost_found",
 ]
+
+# allow overrides to the default ignorable patterns
+IGNORABLE = os.getenv("HASHIO_IGNORABLE", ",".join(IGNORABLE)).split(",")
 
 # default logging level
 LOG_LEVEL = os.getenv("LOG_LEVEL", logging.INFO)

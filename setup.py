@@ -30,6 +30,7 @@
 #
 
 import os
+import sys
 
 from setuptools import find_packages, setup
 
@@ -37,10 +38,21 @@ here = os.path.abspath(os.path.dirname(__file__))
 with open(os.path.join(here, "README.md")) as f:
     long_description = f.read()
 
+try:
+    import sqlite3  # noqa: F401
+except ModuleNotFoundError:
+    print(
+        "\ERROR: Your Python installation does not include sqlite3.\n"
+        "hashio>=0.4.0 requires sqlite3 support for caching.\n"
+        "You can either:\n"
+        "  - install Python with sqlite3 support\n"
+        "  - or pin to an older version: pip install 'hashio<0.4.0'\n",
+        file=sys.stderr,
+    )
 
 setup(
     name="hashio",
-    version="0.4.0",
+    version="0.4.1",
     description="Custom file and directory checksum tool",
     long_description=long_description,
     long_description_content_type="text/markdown",
