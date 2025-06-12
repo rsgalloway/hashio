@@ -211,7 +211,7 @@ Verify pre-generated checksums stored in a `hash.json` file:
 ```python
 from hashio.encoder import verify_checksums
 for algo, value, miss in verify_checksums("hash.json"):
-    print("{0} {1}".format(algo, miss))
+    print(f"{algo} {miss}")
 ```
 
 Generate a checksum of a folder:
