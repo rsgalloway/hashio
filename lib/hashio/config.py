@@ -61,6 +61,7 @@ DEFAULT_ALGO = os.getenv("HASHIO_ALGO", "xxh64")
 IGNORABLE = [
     CACHE_FILENAME,
     "*~",
+    "~*",
     "*.pyc",
     "*.pyo",
     "*.bak",
@@ -74,8 +75,8 @@ IGNORABLE = [
     "build",
     ".venv*",
     "venv*",
-    "#recycle",
-    "#snapshot",
+    "#recycle*",
+    "#snapshot*",
     ".jetpart*",
     "*.egg-info",
     "__pycache__",
