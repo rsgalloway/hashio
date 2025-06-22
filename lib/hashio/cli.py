@@ -334,8 +334,12 @@ def main():
             progress_thread.join()
 
     except KeyboardInterrupt:
-        worker.stop()
-        print("\nstopping...")
+        try:
+            worker.stop()
+        except KeyboardInterrupt:
+            print("\nforced shutdown.")
+        else:
+            print("\nstopping...")
         sys.exit(0)
 
     finally:
