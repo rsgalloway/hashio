@@ -37,7 +37,7 @@ import hashlib
 import os
 import xxhash
 import zlib
-from typing import List
+from typing import List, Tuple
 
 from hashio import config
 from hashio.exporter import CacheExporter
@@ -163,34 +163,49 @@ def checksum_path(
 
 def checksum_gen(
     path: str,
-    encoders: List[str],
-    filetype: str,
-    recursive: bool,
+    encoder: object,
+    filetype: str = "f",
+    recursive: bool = True,
     use_cache: bool = True,
 ):
-    """Checksum generator that yields tuple of (algo, value, path).
+    """Checksum generator that yields tuple of (filepath, value).
+
+    >>> for filepath, value in checksum_gen(path, XXH64Encoder()):
+    ...     print(filepath, value)
 
     :param path: path to a file or folder
-    :param encoders: list of encoder names
+    :param encoder: subclass of Encoder
     :param filetype: one of f (file), d (dir), or a (all)
     :param recursive: recurse subdirs
     :param use_cache: cache results to filesystem
-    :yields: tuple of (algo, value, path)
+    :yields: tuple of (filepath, value)
     """
     if recursive:
         for subpath in walk(path, filetype):
-            for algo in encoders:
-                encoder = ENCODER_MAP.get(algo)()
-                value = checksum_path(subpath, encoder, filetype, use_cache)
-                if value:
-                    yield (algo, value, os.path.relpath(subpath))
+            value = checksum_path(subpath, encoder, filetype, use_cache)
+            if value:
+                yield (subpath, value)
 
     else:
-        for algo in encoders:
-            encoder = ENCODER_MAP.get(algo)()
-            value = checksum_path(path, encoder, filetype, use_cache)
-            if value:
-                yield (algo, value, path)
+        value = checksum_path(path, encoder, filetype, use_cache)
+        if value:
+            yield (value, path)
+
+
+def composite_hash(hashlist: List[Tuple[str, str]], encoder: object):
+    """Creates a deterministic composite hash of (path, hash) pairs, or the
+    output of `checksum_gen` as a list. The composite hash is a single checksum
+    that represents the entire list of checksums.
+
+    >>> results = list(checksum_gen(folder, XXH64Encoder()))
+    >>> composite = composite_hash(results, XXH64Encoder())
+
+    :param hashlist: list of (path, hash) tuples
+    :param encoder: instance of Encoder subclass
+    :return: hexdigest of the composite checksum
+    """
+    entries = [f"{path}:{h}" for path, h in sorted(hashlist)]
+    return checksum_text("\n".join(entries), encoder=encoder)
 
 
 class NullChecksum(object):
@@ -442,20 +457,17 @@ def dedupe_paths_gen(paths: List[str], algo: str = config.DEFAULT_ALGO):
     # map of hash value to path list
     hash_map = {}
 
-    # static kwargs
-    kwargs = {
-        "encoders": [algo],
-        "filetype": "f",
-        "recursive": True,
-        "use_cache": False,
-    }
+    # get the encoder class
+    encoder = get_encoder_class(algo)()
 
     # iterate over paths and generate checksums
     for path in paths:
         if not path or not os.path.exists(path):
             logger.warning("missing: %s", path)
             continue
-        for _, value, filepath in checksum_gen(path=path, **kwargs):
+        for filepath, value in checksum_gen(
+            path=path, encoder=encoder, use_cache=False
+        ):
             filepath = normalize_path(filepath)
             if value in hash_map:
                 hash_map[value].append(filepath)
