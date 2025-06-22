@@ -189,7 +189,7 @@ def checksum_gen(
     else:
         value = checksum_path(path, encoder, filetype, use_cache)
         if value:
-            yield (value, path)
+            yield (path, value)
 
 
 def composite_hash(hashlist: List[Tuple[str, str]], encoder: object):
