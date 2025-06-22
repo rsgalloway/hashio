@@ -70,9 +70,29 @@ def long_to_bytes(data: int):
     return "".join(encoded[::-1])
 
 
-def checksum_file(path: str, encoder: object):
-    """Creates a checksum for a given filepath and encoder.
+def checksum_data(data: bytes, encoder: object):
+    """Checksum contents from a binary stream. Data should be a byte string.
     Note: resets encoder, existing data will be lost.
+
+    >>> checksum_file(open("example.txt", "rb"), MD5Encoder())
+
+    :param data: the byte string data to hash
+    :param encoder: instance of Encoder subclass
+    :return: hexdigest of the checksum
+    """
+    encoder.reset()
+    for i in range(0, len(data), config.BUF_SIZE):
+        encoder.update(data[i : i + config.BUF_SIZE])
+    value = encoder.hexdigest()
+    encoder.reset()
+    return value
+
+
+def checksum_file(path: str, encoder: object):
+    """Creates a checksum for a given filepath and encoder. Note: resets
+    encoder, existing data will be lost.
+
+    >>> checksum_file("example.txt", MD5Encoder())
 
     :param path: the path to the filepath being hashed
     :param encoder: instance of Encoder subclass
@@ -88,9 +108,9 @@ def checksum_file(path: str, encoder: object):
 
 def checksum_folder(path: str, encoder: object):
     """Creates a checksum for the entire contents of a folder as a single
-    checksum.
+    checksum. Note: resets encoder, existing data will be lost.
 
-    Note: resets encoder, existing data will be lost.
+    >>> checksum_folder("/path/to/folder", SHA256Encoder())
 
     :param path: the path to the folder being hashed
     :param encoder: instance of Encoder subclass
@@ -103,6 +123,19 @@ def checksum_folder(path: str, encoder: object):
     value = encoder.hexdigest()
     encoder.reset()
     return value
+
+
+def checksum_text(data: str, encoder: object):
+    """Returns a checksum for a given text data and encoder. Text data is
+    encoded to UTF-8 before hashing.
+
+    >>> checksum_text("example text", XXH64Encoder())
+
+    :param data: the text data to hash
+    :param encoder: instance of Encoder subclass
+    :return: hexdigest of the checksum
+    """
+    return checksum_data(data.encode("utf-8"), encoder)
 
 
 def checksum_path(
