@@ -74,7 +74,7 @@ def checksum_data(data: bytes, encoder: object):
     """Checksum contents from a binary stream. Data should be a byte string.
     Note: resets encoder, existing data will be lost.
 
-    >>> checksum_file(open("example.txt", "rb"), MD5Encoder())
+    >>> checksum_data(open("example.txt", "rb"), XXH64Encoder())
 
     :param data: the byte string data to hash
     :param encoder: instance of Encoder subclass
