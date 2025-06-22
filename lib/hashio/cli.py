@@ -132,8 +132,9 @@ def parse_args():
     parser.add_argument(
         "-v",
         "--verbose",
-        action="store_true",
-        help="verbose output",
+        action="count",
+        default=0,
+        help="output verbosity: -v shows new hashes, -vv shows cached too",
     )
     parser.add_argument(
         "--version",

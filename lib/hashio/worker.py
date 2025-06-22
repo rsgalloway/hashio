@@ -199,7 +199,7 @@ class HashWorker:
         algo: str = config.DEFAULT_ALGO,
         snapshot: str = None,
         force: bool = False,
-        verbose: bool = False,
+        verbose: int = 0,
     ):
         """Initializes a HashWorker instance.
 
@@ -310,7 +310,8 @@ class HashWorker:
             metadata[self.algo] = value
             extra = ""
 
-        if self.verbose:
+        # print the result if verbose mode is enabled
+        if self.verbose >= 2 or (self.verbose == 1 and not cached_hash):
             print(f"{value}  {normalized_path} {extra}")
 
         with self.lock:
