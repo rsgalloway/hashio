@@ -70,144 +70,6 @@ def long_to_bytes(data: int):
     return "".join(encoded[::-1])
 
 
-def checksum_data(data: bytes, encoder: object):
-    """Checksum contents from a binary stream. Data should be a byte string.
-    Note: resets encoder, existing data will be lost.
-
-    >>> checksum_data(open("example.txt", "rb"), XXH64Encoder())
-
-    :param data: the byte string data to hash
-    :param encoder: instance of Encoder subclass
-    :return: hexdigest of the checksum
-    """
-    encoder.reset()
-    for i in range(0, len(data), config.BUF_SIZE):
-        encoder.update(data[i : i + config.BUF_SIZE])
-    value = encoder.hexdigest()
-    encoder.reset()
-    return value
-
-
-def checksum_file(path: str, encoder: object):
-    """Creates a checksum for a given filepath and encoder. Note: resets
-    encoder, existing data will be lost.
-
-    >>> checksum_file("example.txt", MD5Encoder())
-
-    :param path: the path to the filepath being hashed
-    :param encoder: instance of Encoder subclass
-    :return: hexdigest of the checksum
-    """
-    encoder.reset()
-    for data in read_file(path):
-        encoder.update(data)
-    value = encoder.hexdigest()
-    encoder.reset()
-    return value
-
-
-def checksum_folder(path: str, encoder: object):
-    """Creates a checksum for the entire contents of a folder as a single
-    checksum. Note: resets encoder, existing data will be lost.
-
-    >>> checksum_folder("/path/to/folder", SHA256Encoder())
-
-    :param path: the path to the folder being hashed
-    :param encoder: instance of Encoder subclass
-    :return: hexdigest of the checksum
-    """
-    encoder.reset()
-    for filepath in walk(path, filetype="f"):
-        for data in read_file(filepath):
-            encoder.update(data)
-    value = encoder.hexdigest()
-    encoder.reset()
-    return value
-
-
-def checksum_text(data: str, encoder: object):
-    """Returns a checksum for a given text data and encoder. Text data is
-    encoded to UTF-8 before hashing.
-
-    >>> checksum_text("example text", XXH64Encoder())
-
-    :param data: the text data to hash
-    :param encoder: instance of Encoder subclass
-    :return: hexdigest of the checksum
-    """
-    return checksum_data(data.encode("utf-8"), encoder)
-
-
-def checksum_path(
-    path: str, encoder: object, filetype: str = "a", use_cache: bool = True
-):
-    """Returns a checksum of for a given path, encoder and filetype.
-
-    Note: resets encoder, existing data will be lost.
-
-    :param path: the path to the folder being hashed
-    :param encoder: subclass of Encoder
-    :param filetype: one of f (file), d (dir), or a (all)
-    :param use_cache: cache results to filesystem
-    :return: hexdigest of the checksum
-    """
-    if use_cache:
-        cached_value = CacheExporter.find(path, encoder.name)
-        if cached_value:
-            return cached_value
-    if os.path.isfile(path) and filetype in ("a", "f"):
-        return checksum_file(path, encoder)
-    elif os.path.isdir(path) and filetype in ("a", "d"):
-        return checksum_folder(path, encoder)
-
-
-def checksum_gen(
-    path: str,
-    encoder: object,
-    filetype: str = "f",
-    recursive: bool = True,
-    use_cache: bool = True,
-):
-    """Checksum generator that yields tuple of (filepath, value).
-
-    >>> for filepath, value in checksum_gen(path, XXH64Encoder()):
-    ...     print(filepath, value)
-
-    :param path: path to a file or folder
-    :param encoder: subclass of Encoder
-    :param filetype: one of f (file), d (dir), or a (all)
-    :param recursive: recurse subdirs
-    :param use_cache: cache results to filesystem
-    :yields: tuple of (filepath, value)
-    """
-    if recursive:
-        for subpath in walk(path, filetype):
-            value = checksum_path(subpath, encoder, filetype, use_cache)
-            if value:
-                yield (subpath, value)
-
-    else:
-        value = checksum_path(path, encoder, filetype, use_cache)
-        if value:
-            yield (path, value)
-
-
-def composite_hash(hashlist: List[Tuple[str, str]], encoder: object):
-    """Creates a deterministic composite hash of (path, hash) pairs, or the
-    output of `checksum_gen` as a list. The composite hash is a single checksum
-    that represents the entire list of checksums.
-
-    >>> results = list(checksum_gen(folder, XXH64Encoder()))
-    >>> composite = composite_hash(results, XXH64Encoder())
-
-    :param hashlist: list of (path, hash) tuples
-    :param encoder: instance of Encoder subclass
-    :return: hexdigest of the composite checksum
-    """
-    entries = [f"{path}:{h}" for path, h in sorted(hashlist)]
-    return checksum_text("\n".join(entries), encoder=encoder)
-
-
 class NullChecksum(object):
     """A no-op checksum class that does nothing."""
 
@@ -440,6 +302,144 @@ def get_encoder_class(name: str):
     return
 
 
+def checksum_data(data: bytes, encoder: Encoder):
+    """Checksum contents from a binary stream. Data should be a byte string.
+    Note: resets encoder, existing data will be lost.
+
+    >>> checksum_data(open("example.txt", "rb"), XXH64Encoder())
+
+    :param data: the byte string data to hash
+    :param encoder: instance of Encoder subclass
+    :return: hexdigest of the checksum
+    """
+    encoder.reset()
+    for i in range(0, len(data), config.BUF_SIZE):
+        encoder.update(data[i : i + config.BUF_SIZE])
+    value = encoder.hexdigest()
+    encoder.reset()
+    return value
+
+
+def checksum_file(path: str, encoder: Encoder):
+    """Creates a checksum for a given filepath and encoder. Note: resets
+    encoder, existing data will be lost.
+
+    >>> checksum_file("example.txt", MD5Encoder())
+
+    :param path: the path to the filepath being hashed
+    :param encoder: instance of Encoder subclass
+    :return: hexdigest of the checksum
+    """
+    encoder.reset()
+    for data in read_file(path):
+        encoder.update(data)
+    value = encoder.hexdigest()
+    encoder.reset()
+    return value
+
+
+def checksum_folder(path: str, encoder: Encoder):
+    """Creates a checksum for the entire contents of a folder as a single
+    checksum. Note: resets encoder, existing data will be lost.
+
+    >>> checksum_folder("/path/to/folder", SHA256Encoder())
+
+    :param path: the path to the folder being hashed
+    :param encoder: instance of Encoder subclass
+    :return: hexdigest of the checksum
+    """
+    encoder.reset()
+    for filepath in walk(path, filetype="f"):
+        for data in read_file(filepath):
+            encoder.update(data)
+    value = encoder.hexdigest()
+    encoder.reset()
+    return value
+
+
+def checksum_text(data: str, encoder: Encoder):
+    """Returns a checksum for a given text data and encoder. Text data is
+    encoded to UTF-8 before hashing.
+
+    >>> checksum_text("example text", XXH64Encoder())
+
+    :param data: the text data to hash
+    :param encoder: instance of Encoder subclass
+    :return: hexdigest of the checksum
+    """
+    return checksum_data(data.encode("utf-8"), encoder)
+
+
+def checksum_path(
+    path: str, encoder: Encoder, filetype: str = "a", use_cache: bool = True
+):
+    """Returns a checksum of for a given path, encoder and filetype.
+
+    Note: resets encoder, existing data will be lost.
+
+    :param path: the path to the folder being hashed
+    :param encoder: subclass of Encoder
+    :param filetype: one of f (file), d (dir), or a (all)
+    :param use_cache: cache results to filesystem
+    :return: hexdigest of the checksum
+    """
+    if use_cache:
+        cached_value = CacheExporter.find(path, encoder.name)
+        if cached_value:
+            return cached_value
+    if os.path.isfile(path) and filetype in ("a", "f"):
+        return checksum_file(path, encoder)
+    elif os.path.isdir(path) and filetype in ("a", "d"):
+        return checksum_folder(path, encoder)
+
+
+def checksum_gen(
+    path: str,
+    encoder: Encoder,
+    filetype: str = "f",
+    recursive: bool = True,
+    use_cache: bool = True,
+):
+    """Checksum generator that yields tuple of (filepath, value).
+
+    >>> for filepath, value in checksum_gen(path, XXH64Encoder()):
+    ...     print(filepath, value)
+
+    :param path: path to a file or folder
+    :param encoder: subclass of Encoder
+    :param filetype: one of f (file), d (dir), or a (all)
+    :param recursive: recurse subdirs
+    :param use_cache: cache results to filesystem
+    :yields: tuple of (filepath, value)
+    """
+    if recursive:
+        for subpath in walk(path, filetype):
+            value = checksum_path(subpath, encoder, filetype, use_cache)
+            if value:
+                yield (subpath, value)
+
+    else:
+        value = checksum_path(path, encoder, filetype, use_cache)
+        if value:
+            yield (path, value)
+
+
+def composite_hash(hashlist: List[Tuple[str, str]], encoder: Encoder):
+    """Creates a deterministic composite hash of (path, hash) pairs, or the
+    output of `checksum_gen` as a list. The composite hash is a single checksum
+    that represents the entire list of checksums.
+
+    >>> results = list(checksum_gen(folder, XXH64Encoder()))
+    >>> composite = composite_hash(results, XXH64Encoder())
+
+    :param hashlist: list of (path, hash) tuples
+    :param encoder: instance of Encoder subclass
+    :return: hexdigest of the composite checksum
+    """
+    entries = [f"{path}:{h}" for path, h in sorted(hashlist)]
+    return checksum_text("\n".join(entries), encoder=encoder)
+
+
 def dedupe_paths_gen(paths: List[str], algo: str = config.DEFAULT_ALGO):
     """Generator that takes as input one or more directories or a list of files,
     generates checksums, and yields a list of duplicates.
@@ -577,7 +577,7 @@ def dedupe_cache_gen(target: str, source: str, algo: str = config.DEFAULT_ALGO):
             yield [target_filepath, source_filepath]
 
 
-def dedupe_paths(paths: List[str], algo=config.DEFAULT_ALGO):
+def dedupe_paths(paths: List[str], algo: str = config.DEFAULT_ALGO):
     """Returns a list of duplicate file pairs for an input list of directories
     or files.
 
