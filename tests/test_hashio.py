@@ -428,6 +428,24 @@ class TestExporters(unittest.TestCase):
         data = etree.tostring(root)
         self.assertEqual(type(data), bytes)
 
+    def test_checksum_data(self):
+        from hashio.encoder import checksum_data, XXH64Encoder
+
+        text_data = b"hello, world\n"
+        expected_xxh64 = "abdc2a61f1f91f4c"
+        encoder = XXH64Encoder()
+        checksum = checksum_data(text_data, encoder)
+        self.assertEqual(checksum, expected_xxh64)
+
+    def test_checksum_text(self):
+        from hashio.encoder import checksum_text, XXH64Encoder
+
+        text_data = "hello, world\n"
+        expected_xxh64 = "abdc2a61f1f91f4c"
+        encoder = XXH64Encoder()
+        checksum = checksum_text(text_data, encoder)
+        self.assertEqual(checksum, expected_xxh64)
+
 
 if __name__ == "__main__":
     unittest.main()
