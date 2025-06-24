@@ -428,6 +428,65 @@ class TestExporters(unittest.TestCase):
         data = etree.tostring(root)
         self.assertEqual(type(data), bytes)
 
+    def test_checksum_data(self):
+        from hashio.encoder import checksum_data, XXH64Encoder
+
+        text_data = b"hello, world\n"
+        expected_xxh64 = "abdc2a61f1f91f4c"
+        encoder = XXH64Encoder()
+        checksum = checksum_data(text_data, encoder)
+        self.assertEqual(checksum, expected_xxh64)
+
+    def test_checksum_text(self):
+        from hashio.encoder import checksum_text, XXH64Encoder
+
+        text_data = "hello, world\n"
+        expected_xxh64 = "abdc2a61f1f91f4c"
+        encoder = XXH64Encoder()
+        checksum = checksum_text(text_data, encoder)
+        self.assertEqual(checksum, expected_xxh64)
+
+
+class TestCompositeHash(unittest.TestCase):
+    """Tests the composite_hash function."""
+
+    def test_composite_hash(self):
+        from hashio.encoder import XXH64Encoder, composite_hash
+
+        # prepare test data
+        hashlist = [
+            ("file1.txt", "hash1"),
+            ("file2.txt", "hash2"),
+            ("file3.txt", "hash3"),
+        ]
+
+        # create a composite hash
+        encoder = XXH64Encoder()
+        composite = composite_hash(hashlist, encoder)
+
+        # verify the composite hash is not empty
+        self.assertIsNotNone(composite)
+        self.assertIsInstance(composite, str)
+
+        # verify the length of the composite hash (XXH64 produces a 16-character
+        # hex string)
+        self.assertEqual(len(composite), 16)
+
+        # check if the composite hash is deterministic
+        composite2 = composite_hash(hashlist, encoder)
+        self.assertEqual(composite, composite2)
+
+    def test_empty_hashlist(self):
+        from hashio.encoder import XXH64Encoder, composite_hash, checksum_text
+
+        # test with an empty hashlist
+        encoder = XXH64Encoder()
+        composite = composite_hash([], encoder)
+
+        # verify the composite hash for an empty list
+        self.assertIsNotNone(composite)
+        self.assertEqual(composite, checksum_text("", encoder))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -33,6 +33,7 @@ __doc__ = """
 Contains hash worker class and functions.
 """
 
+import ctypes
 import multiprocessing
 import os
 import queue
@@ -199,7 +200,7 @@ class HashWorker:
         algo: str = config.DEFAULT_ALGO,
         snapshot: str = None,
         force: bool = False,
-        verbose: bool = False,
+        verbose: int = 0,
     ):
         """Initializes a HashWorker instance.
 
@@ -223,7 +224,8 @@ class HashWorker:
         self.total_time = 0.0
         self.pending = 0
         self.verbose = verbose
-        self.progress = Value("i", 0)  # shared int for progress
+        self.progress = Value("i", 0)  # shared files counter
+        self.bytes_hashed = Value(ctypes.c_ulonglong, 0)  # shared bytes counter
         self.start = start or os.path.relpath(path)
         self.exporter = get_exporter(outfile)
         self.queue = Queue()  # task queue
@@ -283,6 +285,7 @@ class HashWorker:
         """
         metadata = get_metadata(path)
         mtime = metadata["mtime"]
+        size = metadata["size"]
 
         # get the worker cache instance
         cache = get_worker_cache()
@@ -310,7 +313,8 @@ class HashWorker:
             metadata[self.algo] = value
             extra = ""
 
-        if self.verbose:
+        # print the result if verbose mode is enabled
+        if self.verbose >= 2 or (self.verbose == 1 and not cached_hash):
             print(f"{value}  {normalized_path} {extra}")
 
         with self.lock:
@@ -320,6 +324,9 @@ class HashWorker:
 
         with self.progress.get_lock():
             self.progress.value += 1
+
+        with self.bytes_hashed.get_lock():
+            self.bytes_hashed.value += size
 
     def run(self):
         """Runs the worker."""
@@ -350,6 +357,10 @@ class HashWorker:
     def progress_count(self):
         """Returns the current progress count."""
         return self.progress.value
+
+    def progress_bytes(self):
+        """Returns the total bytes hashed so far."""
+        return self.bytes_hashed.value
 
     def is_done(self):
         """Checks if the worker has completed its tasks."""

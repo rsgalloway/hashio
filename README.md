@@ -69,7 +69,7 @@ unless using the `--force` option:
 $ hashio .git
 path is ignorable: .git
 $ hashio .git --force
-hashing files: 442file [00:00, 1101.47file/s]
+hashing: 894kB [00:02, 758kB/s, files/s=412.80]
 ```
 
 Verify paths in previously generated hash file by comparing stored mtimes (if

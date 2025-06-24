@@ -132,8 +132,9 @@ def parse_args():
     parser.add_argument(
         "-v",
         "--verbose",
-        action="store_true",
-        help="verbose output",
+        action="count",
+        default=0,
+        help="output verbosity: -v shows new hashes, -vv shows cached too",
     )
     parser.add_argument(
         "--version",
@@ -184,22 +185,56 @@ def parse_args():
 
 
 def start_progress_thread(worker, update_interval=0.2):
-    """Start a thread to monitor worker.progress.value and update tqdm.
+    """Start a thread to monitor worker progress and update tqdm with MB/sec.
 
     :param worker: The HashWorker instance to monitor.
     :param update_interval: How often to update the progress bar (in seconds).
     :return: The thread that updates the progress bar.
     """
-    pbar = tqdm(desc="hashing files", unit="file", dynamic_ncols=True)
+
+    pbar = tqdm(
+        desc="hashing",
+        unit="B",  # base unit
+        unit_scale=True,  # auto-scale (KB, MB, GB...)
+        unit_divisor=1024,  # use 1024-based units (KiB, MiB)
+        smoothing=0.1,
+        dynamic_ncols=True,
+    )
+
+    last_time = time.time()
+    last_files = worker.progress_count()
 
     def watch():
+        nonlocal last_time, last_files
         while not worker.is_done():
-            pbar.n = worker.progress_count()
+            now = time.time()
+            files_now = worker.progress_count()
+            bytes_now = worker.progress_bytes()
+
+            elapsed = now - last_time
+            file_delta = files_now - last_files
+            files_per_sec = file_delta / elapsed if elapsed > 0 else 0
+
+            # tqdm expects raw byte count for n
+            pbar.n = bytes_now
+            pbar.set_postfix(
+                {
+                    "files/s": f"{files_per_sec:.2f}",
+                }
+            )
+
             pbar.refresh()
+            last_time = now
+            last_files = files_now
             time.sleep(update_interval)
 
-        # final update to catch any remaining progress
-        pbar.n = worker.progress_count()
+        # final update
+        pbar.n = worker.progress_bytes()
+        pbar.set_postfix(
+            {
+                "files/s": f"0.00",
+            }
+        )
         pbar.refresh()
         pbar.close()
 
@@ -333,8 +368,12 @@ def main():
             progress_thread.join()
 
     except KeyboardInterrupt:
-        worker.stop()
-        print("\nstopping...")
+        try:
+            worker.stop()
+        except KeyboardInterrupt:
+            print("\nforced shutdown.")
+        else:
+            print("\nstopping...")
         sys.exit(0)
 
     finally:
