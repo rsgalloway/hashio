@@ -38,13 +38,14 @@ import os
 import sys
 import threading
 import time
+
 from tqdm import tqdm
 from datetime import datetime
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
-from hashio import __version__, config, utils
+from hashio import __version__, config
 from hashio.cache import Cache
-from hashio.encoder import get_encoder_class, verify_caches, verify_checksums
-from hashio.logger import logger
+from hashio.encoder import verify_caches, verify_checksums
 from hashio.worker import HashWorker
 
 
@@ -87,9 +88,9 @@ def parse_args():
         "path",
         type=str,
         metavar="PATH",
-        nargs="?",
-        help="path to directory or files to checksum",
-        default=os.getcwd(),
+        default=[os.getcwd()],
+        nargs="*",
+        help="path(s) to directory or files to hash",
     )
     parser.add_argument(
         "-o",
@@ -184,7 +185,7 @@ def parse_args():
     return args
 
 
-def start_progress_thread(worker, update_interval=0.2):
+def start_progress_thread(worker: HashWorker, update_interval: float = 0.2):
     """Start a thread to monitor worker progress and update tqdm with MB/sec.
 
     :param worker: The HashWorker instance to monitor.
@@ -193,7 +194,7 @@ def start_progress_thread(worker, update_interval=0.2):
     """
 
     pbar = tqdm(
-        desc="hashing",
+        desc=f"hashing {worker.path}",
         unit="B",  # base unit
         unit_scale=True,  # auto-scale (KB, MB, GB...)
         unit_divisor=1024,  # use 1024-based units (KiB, MiB)
@@ -241,6 +242,65 @@ def start_progress_thread(worker, update_interval=0.2):
     thread = threading.Thread(target=watch, daemon=True)
     thread.start()
     return thread
+
+
+def run_worker_for_path(path: str, args_dict: dict):
+    """Run a HashWorker for a given path with the provided arguments.
+
+    This function checks if the path exists, if it is ignorable, and if the
+    specified hashing algorithm is supported. It then initializes a HashWorker
+    and runs it, optionally starting a progress thread if the path is a directory
+    and verbose output is not enabled.
+
+    :param path: The path to process (file or directory).
+    :param args_dict: Dictionary of arguments to pass to the worker.
+    :return: Result message indicating success or failure.
+    """
+    import os
+    from hashio.utils import is_ignorable
+    from hashio.encoder import get_encoder_class
+    from hashio.worker import HashWorker
+
+    if not os.path.exists(path):
+        return f"[{path}] path does not exist"
+
+    if is_ignorable(path) and not args_dict["force"]:
+        return f"[{path}] path is ignorable"
+
+    if not get_encoder_class(args_dict["algo"]):
+        return f"[{path}] unsupported hash algorithm: {args_dict['algo']}"
+
+    verbose = args_dict["verbose"]
+
+    # reduce procs if it's a file
+    procs = 1 if os.path.isfile(path) else args_dict["procs"]
+
+    # if verbose, disable watcher and use tqdm directly
+    do_watcher = not verbose and os.path.isdir(path) and sys.stdout.isatty()
+
+    worker = HashWorker(
+        path,
+        args_dict["outfile"],
+        procs=procs,
+        start=args_dict["start"],
+        algo=args_dict["algo"],
+        snapshot=args_dict["snapshot"],
+        force=args_dict["force"],
+        verbose=verbose,
+    )
+
+    try:
+        if do_watcher:
+            progress_thread = start_progress_thread(worker)
+        worker.run()
+        if do_watcher:
+            progress_thread.join()
+        return f"[{path}] done in {worker.total_time:.2f}s"
+    except KeyboardInterrupt:
+        worker.stop()
+        return f"\n[{path}] interrupted"
+    except Exception as e:
+        return f"\n[{path}] error: {e}"
 
 
 def main():
@@ -324,60 +384,32 @@ def main():
             return 2
         return 0
 
-    if not os.path.exists(args.path):
-        print(f"path does not exist: {args.path}")
-        return 2
+    args_dict = vars(args).copy()
+    paths = args_dict.pop("path")
 
-    if os.path.isfile(args.path):
-        args.procs = 1
-        args.verbose = True
+    # sequential fallback if only one path
+    if len(paths) == 1:
+        print(run_worker_for_path(paths[0], args_dict))
+        return 0
 
-    if utils.is_ignorable(args.path) and not args.force:
-        print(f"path is ignorable: {args.path}")
-        return 2
+    # parallel execution for multiple paths
+    max_workers = min(len(paths), args_dict["procs"])
 
-    if args.outfile and os.path.isdir(args.outfile):
-        print(f"output file cannot be a directory: {args.outfile}")
-        return 2
-
-    if not get_encoder_class(args.algo):
-        print(f"unsupported hash algorithm: {args.algo}")
-        return 2
-
-    # create hash worker and generate checksums
-    # TODO: support progress callback: HashWorker(progress_callback=update_progress)
-    worker = HashWorker(
-        args.path,
-        args.outfile,
-        procs=args.procs,
-        start=args.start,
-        algo=args.algo,
-        snapshot=args.snapshot,
-        force=args.force,
-        verbose=args.verbose,
-    )
-
-    # if verbose, disable watcher and use tqdm directly
-    do_watcher = not args.verbose and os.path.isdir(args.path) and sys.stdout.isatty()
+    # print(f"processing {len(paths)} paths using {max_workers} workers")
 
     try:
-        if do_watcher:
-            progress_thread = start_progress_thread(worker)
-        worker.run()
-        if do_watcher:
-            progress_thread.join()
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(run_worker_for_path, path, args_dict): path
+                for path in paths
+            }
+
+            for future in as_completed(futures):
+                print(future.result())
 
     except KeyboardInterrupt:
-        try:
-            worker.stop()
-        except KeyboardInterrupt:
-            print("\nforced shutdown.")
-        else:
-            print("\nstopping...")
-        sys.exit(0)
-
-    finally:
-        logger.debug("done in %s seconds", worker.total_time)
+        print("\nstopping...")
+        sys.exit(1)
 
     return 0
 
