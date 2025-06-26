@@ -218,9 +218,11 @@ def start_progress_thread(worker: HashWorker, update_interval: float = 0.2):
 
             # tqdm expects raw byte count for n
             pbar.n = bytes_now
+            filename = os.path.basename(worker.progress_filename())
             pbar.set_postfix(
                 {
                     "files/s": f"{files_per_sec:.2f}",
+                    "file": filename,
                 }
             )
 
@@ -270,7 +272,8 @@ def run_worker_for_path(path: str, args_dict: dict):
     if not get_encoder_class(args_dict["algo"]):
         return f"[{path}] unsupported hash algorithm: {args_dict['algo']}"
 
-    verbose = args_dict["verbose"]
+    # set verbosity based on whether path is a file or directory
+    verbose = 2 if os.path.isfile(path) else args_dict["verbose"]
 
     # reduce procs if it's a file
     procs = 1 if os.path.isfile(path) else args_dict["procs"]

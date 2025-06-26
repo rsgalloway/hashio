@@ -226,6 +226,7 @@ class HashWorker:
         self.verbose = verbose
         self.progress = Value("i", 0)  # shared files counter
         self.bytes_hashed = Value(ctypes.c_ulonglong, 0)  # shared bytes counter
+        self.current_file = multiprocessing.Array(ctypes.c_char, 512)
         self.start = start or os.path.relpath(path)
         self.exporter = get_exporter(outfile)
         self.queue = Queue()  # task queue
@@ -297,6 +298,9 @@ class HashWorker:
         if normalized_path == self.outfile:
             return
 
+        # update the current file in shared memory
+        self.update_current_file(normalized_path)
+
         # check if the hash is cached
         cached_hash = None
         if cache and not self.force:
@@ -327,6 +331,15 @@ class HashWorker:
 
         with self.bytes_hashed.get_lock():
             self.bytes_hashed.value += size
+
+    def update_current_file(self, path: str):
+        """Updates the current file in shared memory."""
+        encoded = path.encode("utf-8")[: 512 - 1]  # truncate if needed
+        with self.current_file.get_lock():
+            self.current_file[: len(encoded)] = encoded
+            self.current_file[len(encoded) :] = b"\x00" * (
+                512 - len(encoded)
+            )  # null-pad
 
     def run(self):
         """Runs the worker."""
@@ -361,6 +374,11 @@ class HashWorker:
     def progress_bytes(self):
         """Returns the total bytes hashed so far."""
         return self.bytes_hashed.value
+
+    def progress_filename(self) -> str:
+        with self.current_file.get_lock():
+            raw = bytes(self.current_file[:])
+            return raw.split(b"\x00", 1)[0].decode("utf-8", errors="replace")
 
     def is_done(self):
         """Checks if the worker has completed its tasks."""
