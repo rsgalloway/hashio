@@ -196,7 +196,7 @@ def start_progress_thread(
     """
 
     pbar = tqdm(
-        desc=f"hashing {worker.path}",
+        desc=worker.path,
         unit="B",  # base unit
         unit_scale=True,  # auto-scale (KB, MB, GB...)
         unit_divisor=1024,  # use 1024-based units (KiB, MiB)
@@ -247,66 +247,6 @@ def start_progress_thread(
     thread = threading.Thread(target=watch, daemon=True)
     thread.start()
     return thread
-
-
-def run_worker_for_path(path: str, args_dict: dict):
-    """Run a HashWorker for a given path with the provided arguments.
-
-    This function checks if the path exists, if it is ignorable, and if the
-    specified hashing algorithm is supported. It then initializes a HashWorker
-    and runs it, optionally starting a progress thread if the path is a directory
-    and verbose output is not enabled.
-
-    :param path: The path to process (file or directory).
-    :param args_dict: Dictionary of arguments to pass to the worker.
-    :return: Result message indicating success or failure.
-    """
-    import os
-    from hashio.utils import is_ignorable
-    from hashio.encoder import get_encoder_class
-    from hashio.worker import HashWorker
-
-    if not os.path.exists(path):
-        return f"[{path}] path does not exist"
-
-    if is_ignorable(path) and not args_dict["force"]:
-        return f"[{path}] path is ignorable"
-
-    if not get_encoder_class(args_dict["algo"]):
-        return f"[{path}] unsupported hash algorithm: {args_dict['algo']}"
-
-    # set verbosity based on whether path is a file or directory
-    verbose = 2 if os.path.isfile(path) else args_dict["verbose"]
-
-    # reduce procs if it's a file
-    procs = 1 if os.path.isfile(path) else args_dict["procs"]
-
-    # if verbose, disable watcher and use tqdm directly
-    do_watcher = not verbose and os.path.isdir(path) and sys.stdout.isatty()
-
-    worker = HashWorker(
-        path,
-        args_dict["outfile"],
-        procs=procs,
-        start=args_dict["start"],
-        algo=args_dict["algo"],
-        snapshot=args_dict["snapshot"],
-        force=args_dict["force"],
-        verbose=verbose,
-    )
-
-    try:
-        if do_watcher:
-            progress_thread = start_progress_thread(worker)
-        worker.run()
-        if do_watcher:
-            progress_thread.join()
-        return f"[{path}] done in {worker.total_time:.2f}s"
-    except KeyboardInterrupt:
-        worker.stop()
-        return f"\n[{path}] interrupted"
-    except Exception as e:
-        return f"\n[{path}] error: {e}"
 
 
 def main():
