@@ -185,7 +185,9 @@ def parse_args():
     return args
 
 
-def start_progress_thread(worker: HashWorker, update_interval: float = 0.2):
+def start_progress_thread(
+    worker: HashWorker, position: int = 0, update_interval: float = 0.2
+):
     """Start a thread to monitor worker progress and update tqdm with MB/sec.
 
     :param worker: The HashWorker instance to monitor.
@@ -199,6 +201,7 @@ def start_progress_thread(worker: HashWorker, update_interval: float = 0.2):
         unit_scale=True,  # auto-scale (KB, MB, GB...)
         unit_divisor=1024,  # use 1024-based units (KiB, MiB)
         smoothing=0.1,
+        position=position,
         dynamic_ncols=True,
     )
 
@@ -390,29 +393,49 @@ def main():
     args_dict = vars(args).copy()
     paths = args_dict.pop("path")
 
-    # sequential fallback if only one path
-    if len(paths) == 1:
-        print(run_worker_for_path(paths[0], args_dict))
-        return 0
-
-    # parallel execution for multiple paths
-    max_workers = min(len(paths), args_dict["procs"])
-
-    # print(f"processing {len(paths)} paths using {max_workers} workers")
+    progress_threads = []
+    worker_threads = []
+    workers = []
 
     try:
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(run_worker_for_path, path, args_dict): path
-                for path in paths
-            }
+        for i, path in enumerate(paths):
+            worker = HashWorker(
+                path=path,
+                outfile=args_dict["outfile"],
+                procs=args_dict["procs"],
+                start=args_dict["start"],
+                algo=args_dict["algo"],
+                snapshot=args_dict["snapshot"],
+                force=args_dict["force"],
+                verbose=args_dict["verbose"],
+            )
+            workers.append(worker)
 
-            for future in as_completed(futures):
-                print(future.result())
+            # if verbose, disable watcher and use tqdm directly
+            do_watcher = (
+                not args.verbose and os.path.isdir(path) and sys.stdout.isatty()
+            )
+
+            if do_watcher:
+                t = start_progress_thread(worker, position=i)
+                progress_threads.append(t)
+
+            thread = threading.Thread(target=worker.run)
+            thread.start()
+            worker_threads.append(thread)
+
+        # wait for workers to finish
+        for thread in worker_threads:
+            thread.join()
 
     except KeyboardInterrupt:
         print("\nstopping...")
-        sys.exit(1)
+        for worker in workers:
+            worker.stop()
+        sys.exit(0)
+
+    finally:
+        print("")
 
     return 0
 
