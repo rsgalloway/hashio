@@ -299,7 +299,7 @@ class HashWorker:
             return
 
         # update the current file in shared memory
-        self.update_current_file(normalized_path)
+        self.update_current_file(path)
 
         # check if the hash is cached
         cached_hash = None

@@ -221,7 +221,11 @@ def start_progress_thread(
 
             # tqdm expects raw byte count for n
             pbar.n = bytes_now
-            filename = os.path.basename(worker.progress_filename())
+            filename = os.path.basename(worker.progress_filename())[:50]
+            # terminal_width = os.get_terminal_size().columns
+            # max_filename_length = terminal_width - 50
+            # if len(filename) > max_filename_length:
+            #     filename = filename[: max_filename_length - 3] + "..."
             pbar.set_postfix(
                 {
                     "files/s": f"{files_per_sec:.2f}",
@@ -331,11 +335,13 @@ def main():
         return 0
 
     args_dict = vars(args).copy()
-    paths = args_dict.pop("path")
+    paths = list(set(args_dict.pop("path")))
 
     progress_threads = []
     worker_threads = []
     workers = []
+
+    verbose = 2 if all(os.path.isfile(p) for p in paths) else args_dict["verbose"]
 
     try:
         for i, path in enumerate(paths):
@@ -347,14 +353,12 @@ def main():
                 algo=args_dict["algo"],
                 snapshot=args_dict["snapshot"],
                 force=args_dict["force"],
-                verbose=args_dict["verbose"],
+                verbose=verbose,
             )
             workers.append(worker)
 
             # if verbose, disable watcher and use tqdm directly
-            do_watcher = (
-                not args.verbose and os.path.isdir(path) and sys.stdout.isatty()
-            )
+            do_watcher = not verbose and os.path.isdir(path) and sys.stdout.isatty()
 
             if do_watcher:
                 t = start_progress_thread(worker, position=i)
@@ -365,17 +369,15 @@ def main():
             worker_threads.append(thread)
 
         # wait for workers to finish
-        for thread in worker_threads:
-            thread.join()
+        while any(t.is_alive() for t in worker_threads):
+            for t in worker_threads:
+                t.join(timeout=0.2)
 
     except KeyboardInterrupt:
         print("\nstopping...")
         for worker in workers:
             worker.stop()
         sys.exit(0)
-
-    finally:
-        print("")
 
     return 0
 
