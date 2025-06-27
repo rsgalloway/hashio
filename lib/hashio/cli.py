@@ -41,9 +41,8 @@ import time
 
 from tqdm import tqdm
 from datetime import datetime
-from concurrent.futures import ProcessPoolExecutor, as_completed
 
-from hashio import __version__, config
+from hashio import __version__, config, utils
 from hashio.cache import Cache
 from hashio.encoder import verify_caches, verify_checksums
 from hashio.worker import HashWorker
@@ -129,6 +128,11 @@ def parse_args():
         "--force",
         action="store_true",
         help="skip ignorables",
+    )
+    parser.add_argument(
+        "--summarize",
+        action="store_true",
+        help="show summary of results",
     )
     parser.add_argument(
         "-v",
@@ -375,14 +379,35 @@ def main():
                 t.join(timeout=0.2)
 
     except KeyboardInterrupt:
-        print("\nstopping...")
         for worker in workers:
             worker.stop()
-        sys.exit(0)
+        for t in progress_threads:
+            t.join(timeout=0.2)
+        print("stopping...")
+        # sys.exit(0)
 
     finally:
         if not verbose:
             print("")
+
+        if args.summarize:
+            total_files = sum(w.progress_count() for w in workers)
+            total_bytes = sum(w.progress_bytes() for w in workers)
+            total_time = sum(w.total_time for w in workers if hasattr(w, "total_time"))
+
+            print(f"total files: {total_files}")
+            print(f"total bytes: {utils.format_bytes(total_bytes)}")
+            print(f"total time:  {total_time:.2f} seconds")
+            print(
+                f"avg files/s: {total_files / total_time:.2f}"
+                if total_time
+                else "  Avg files/s: N/A"
+            )
+            print(
+                f"avg MB/s:    {(total_bytes / 1024 / 1024) / total_time:.2f}"
+                if total_time
+                else "  Avg MB/s:    N/A"
+            )
 
     return 0
 
