@@ -203,6 +203,7 @@ def start_progress_thread(
         smoothing=0.1,
         position=position,
         dynamic_ncols=True,
+        leave=True,
     )
 
     last_time = time.time()
@@ -246,7 +247,7 @@ def start_progress_thread(
             }
         )
         pbar.refresh()
-        pbar.close()
+        # pbar.close()
 
     thread = threading.Thread(target=watch, daemon=True)
     thread.start()
@@ -378,6 +379,10 @@ def main():
         for worker in workers:
             worker.stop()
         sys.exit(0)
+
+    finally:
+        if not verbose:
+            print("")
 
     return 0
 
