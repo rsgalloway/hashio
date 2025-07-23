@@ -317,10 +317,14 @@ class HashWorker:
             value = cached_hash
             extra = "(cached)"
         else:
-            encoder = get_encoder(self.algo)
-            value = checksum_file(path, encoder)
-            metadata[self.algo] = value
             extra = ""
+            try:
+                encoder = get_encoder(self.algo)
+                value = checksum_file(path, encoder)
+                metadata[self.algo] = value
+            except OSError as e:
+                logger.debug(str(e))
+                return
 
         # print the result if verbose mode is enabled
         if self.verbose >= 2 or (self.verbose == 1 and not cached_hash):
