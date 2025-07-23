@@ -215,7 +215,9 @@ def start_progress_thread(
 
     def watch():
         nonlocal last_time, last_files
-        while not worker.is_done():
+
+        # wait for worker done event with a timeout
+        while not worker.done.wait(timeout=update_interval):
             now = time.time()
             files_now = worker.progress_count()
             bytes_now = worker.progress_bytes()
@@ -375,8 +377,13 @@ def main():
 
         # wait for workers to finish
         while any(t.is_alive() for t in worker_threads):
+            # wait for all workers to finish
             for t in worker_threads:
                 t.join(timeout=0.2)
+
+            # now wait for progress threads to exit
+            for t in progress_threads:
+                t.join()
 
     except KeyboardInterrupt:
         for worker in workers:
@@ -384,7 +391,6 @@ def main():
         for t in progress_threads:
             t.join(timeout=0.2)
         print("stopping...")
-        # sys.exit(0)
 
     finally:
         if not verbose:
