@@ -412,21 +412,18 @@ class Cache:
         self.conn.commit()
 
     @with_retry()
-    def add_to_snapshot(self, snapshot_id: int, path: str, mtime: float, algo: str):
+    def add_to_snapshot(self, snapshot_id: int, file_id: int):
         """Link an entry to a snapshot.
 
         :param snapshot_id: The ID of the snapshot to link to.
-        :param path: The file path to link.
-        :param mtime: The last modified time of the file.
-        :param algo: The hashing algorithm used.
+        :param file_id: The file id to link.
         """
         self.conn.execute(
             """
-            INSERT OR IGNORE INTO snapshot_files
-            (snapshot_id, file_path, file_mtime, file_algo)
-            VALUES (?, ?, ?, ?)
+            INSERT OR IGNORE INTO snapshot_files (snapshot_id, file_id)
+            VALUES (?, ?)
             """,
-            (snapshot_id, path, mtime, algo),
+            (snapshot_id, file_id),
         )
 
     @with_retry()
