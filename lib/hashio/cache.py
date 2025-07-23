@@ -46,6 +46,14 @@ from typing import Optional
 from hashio.config import DEFAULT_DB_PATH
 from hashio.logger import logger
 
+# sqlite3 OperationalError messages that indicate a locked database
+LOCK_MESSAGES = [
+    "database is locked",
+    "database schema is locked",
+    "database table is locked",
+    "database is busy",
+]
+
 
 def with_retry(retries: int = 10, delay: float = 0.2, backoff: float = 2.0):
     """Decorator to retry a function if it raises an OperationalError due to a
@@ -64,7 +72,7 @@ def with_retry(retries: int = 10, delay: float = 0.2, backoff: float = 2.0):
                 try:
                     return fn(*args, **kwargs)
                 except sqlite3.OperationalError as e:
-                    if "database is locked" in str(e):
+                    if any(msg in str(e).lower() for msg in LOCK_MESSAGES):
                         try:
                             if args[0].conn.in_transaction:  # args[0] is self
                                 args[0].conn.rollback()
@@ -73,6 +81,7 @@ def with_retry(retries: int = 10, delay: float = 0.2, backoff: float = 2.0):
                         time.sleep(_delay)
                         _delay *= backoff
                     else:
+                        logger.warning("sqlite3.OperationalError: %s", str(e))
                         raise
             raise RuntimeError(
                 f"{fn.__name__} failed after {retries} retries due to database lock. {e}"
