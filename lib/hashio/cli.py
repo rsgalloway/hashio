@@ -342,7 +342,7 @@ def main():
         return 0
 
     args_dict = vars(args).copy()
-    paths = list(set(args_dict.pop("path")))
+    paths = list(dict.fromkeys(args_dict.pop("path")))
 
     progress_threads = []
     worker_threads = []

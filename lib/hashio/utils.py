@@ -44,7 +44,7 @@ ALL_IGNORABLE = re.compile(
 )
 
 
-def format_bytes(n):
+def format_bytes(n: int):
     """Formats a number of bytes into a human-readable string.
 
     :param n: number of bytes
