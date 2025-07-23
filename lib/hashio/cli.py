@@ -38,13 +38,13 @@ import os
 import sys
 import threading
 import time
+
 from tqdm import tqdm
 from datetime import datetime
 
 from hashio import __version__, config, utils
 from hashio.cache import Cache
-from hashio.encoder import get_encoder_class, verify_caches, verify_checksums
-from hashio.logger import logger
+from hashio.encoder import verify_caches, verify_checksums
 from hashio.worker import HashWorker
 
 
@@ -87,9 +87,9 @@ def parse_args():
         "path",
         type=str,
         metavar="PATH",
-        nargs="?",
-        help="path to directory or files to checksum",
-        default=os.getcwd(),
+        default=[os.getcwd()],
+        nargs="*",
+        help="path(s) to directory or files to hash",
     )
     parser.add_argument(
         "-o",
@@ -128,6 +128,11 @@ def parse_args():
         "--force",
         action="store_true",
         help="skip ignorables",
+    )
+    parser.add_argument(
+        "--summarize",
+        action="store_true",
+        help="show summary of results",
     )
     parser.add_argument(
         "-v",
@@ -184,7 +189,9 @@ def parse_args():
     return args
 
 
-def start_progress_thread(worker, update_interval=0.2):
+def start_progress_thread(
+    worker: HashWorker, position: int = 0, update_interval: float = 0.2
+):
     """Start a thread to monitor worker progress and update tqdm with MB/sec.
 
     :param worker: The HashWorker instance to monitor.
@@ -193,12 +200,14 @@ def start_progress_thread(worker, update_interval=0.2):
     """
 
     pbar = tqdm(
-        desc="hashing",
+        desc=worker.path,
         unit="B",  # base unit
         unit_scale=True,  # auto-scale (KB, MB, GB...)
         unit_divisor=1024,  # use 1024-based units (KiB, MiB)
         smoothing=0.1,
+        position=position,
         dynamic_ncols=True,
+        leave=True,
     )
 
     last_time = time.time()
@@ -206,7 +215,9 @@ def start_progress_thread(worker, update_interval=0.2):
 
     def watch():
         nonlocal last_time, last_files
-        while not worker.is_done():
+
+        # wait for worker done event with a timeout
+        while not worker.done.wait(timeout=update_interval):
             now = time.time()
             files_now = worker.progress_count()
             bytes_now = worker.progress_bytes()
@@ -217,9 +228,11 @@ def start_progress_thread(worker, update_interval=0.2):
 
             # tqdm expects raw byte count for n
             pbar.n = bytes_now
+            filename = os.path.basename(worker.progress_filename())[:50]
             pbar.set_postfix(
                 {
                     "files/s": f"{files_per_sec:.2f}",
+                    "file": filename,
                 }
             )
 
@@ -236,7 +249,8 @@ def start_progress_thread(worker, update_interval=0.2):
             }
         )
         pbar.refresh()
-        pbar.close()
+        # avoid closing the progress bar immediately
+        # pbar.close()
 
     thread = threading.Thread(target=watch, daemon=True)
     thread.start()
@@ -324,60 +338,79 @@ def main():
             return 2
         return 0
 
-    if not os.path.exists(args.path):
-        print(f"path does not exist: {args.path}")
-        return 2
+    args_dict = vars(args).copy()
+    paths = list(dict.fromkeys(args_dict.pop("path")))
 
-    if os.path.isfile(args.path):
-        args.procs = 1
-        args.verbose = True
+    progress_threads = []
+    worker_threads = []
+    workers = []
 
-    if utils.is_ignorable(args.path) and not args.force:
-        print(f"path is ignorable: {args.path}")
-        return 2
-
-    if args.outfile and os.path.isdir(args.outfile):
-        print(f"output file cannot be a directory: {args.outfile}")
-        return 2
-
-    if not get_encoder_class(args.algo):
-        print(f"unsupported hash algorithm: {args.algo}")
-        return 2
-
-    # create hash worker and generate checksums
-    # TODO: support progress callback: HashWorker(progress_callback=update_progress)
-    worker = HashWorker(
-        args.path,
-        args.outfile,
-        procs=args.procs,
-        start=args.start,
-        algo=args.algo,
-        snapshot=args.snapshot,
-        force=args.force,
-        verbose=args.verbose,
-    )
-
-    # if verbose, disable watcher and use tqdm directly
-    do_watcher = not args.verbose and os.path.isdir(args.path) and sys.stdout.isatty()
+    verbose = 2 if all(os.path.isfile(p) for p in paths) else args_dict["verbose"]
 
     try:
-        if do_watcher:
-            progress_thread = start_progress_thread(worker)
-        worker.run()
-        if do_watcher:
-            progress_thread.join()
+        for i, path in enumerate(paths):
+            worker = HashWorker(
+                path=path,
+                outfile=args_dict["outfile"],
+                procs=args_dict["procs"],
+                start=args_dict["start"],
+                algo=args_dict["algo"],
+                snapshot=args_dict["snapshot"],
+                force=args_dict["force"],
+                verbose=verbose,
+            )
+            workers.append(worker)
+
+            # if verbose, disable watcher and use tqdm directly
+            do_watcher = not verbose and os.path.isdir(path) and sys.stdout.isatty()
+
+            if do_watcher:
+                t = start_progress_thread(worker, position=i)
+                progress_threads.append(t)
+
+            thread = threading.Thread(target=worker.run)
+            thread.start()
+            worker_threads.append(thread)
+
+        # wait for workers to finish
+        while any(t.is_alive() for t in worker_threads):
+            # wait for all workers to finish
+            for t in worker_threads:
+                t.join(timeout=0.2)
+
+            # now wait for progress threads to exit
+            for t in progress_threads:
+                t.join()
 
     except KeyboardInterrupt:
-        try:
+        for worker in workers:
             worker.stop()
-        except KeyboardInterrupt:
-            print("\nforced shutdown.")
-        else:
-            print("\nstopping...")
-        sys.exit(0)
+        for t in progress_threads:
+            t.join(timeout=0.2)
+        print("stopping...")
 
     finally:
-        logger.debug("done in %s seconds", worker.total_time)
+        if len(paths) > 1 and not (args.verbose or args.summarize):
+            print("")
+
+        if args.summarize:
+            total_files = sum(w.progress_count() for w in workers)
+            total_bytes = sum(w.progress_bytes() for w in workers)
+            total_time = sum(w.total_time for w in workers if hasattr(w, "total_time"))
+
+            print(f"total files: {total_files}")
+            print(f"total bytes: {utils.format_bytes(total_bytes)}")
+            print(f"total time:  {total_time:.2f} seconds")
+            print(
+                f"avg files/s: {total_files / total_time:.2f}"
+                if total_time
+                else "  Avg files/s: N/A"
+            )
+            print(
+                f"avg MB/s:    {(total_bytes / 1024 / 1024) / total_time:.2f}"
+                if total_time
+                else "  Avg MB/s:    N/A"
+            )
 
     return 0
 

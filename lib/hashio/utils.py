@@ -44,10 +44,25 @@ ALL_IGNORABLE = re.compile(
 )
 
 
+def format_bytes(n: int):
+    """Formats a number of bytes into a human-readable string.
+
+    :param n: number of bytes
+    :returns: formatted string with appropriate unit (B, KB, MB, GB, TB, PB)
+    """
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if n < 1024:
+            return f"{n:.2f} {unit}"
+        n /= 1024
+    return f"{n:.2f} PB"
+
+
 def get_metadata(path: str):
     """Returns dict of file metadata: atime, ctime, mtime, ino, dev, size,
-
     Note: disk usage for directories not accurate.
+
+    :param path: file system path
+    :returns: dict with file metadata
     """
     stats = os.stat(path)
     path_type = "file" if os.path.isfile(path) else "dir"

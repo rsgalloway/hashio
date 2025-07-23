@@ -50,6 +50,9 @@ from hashio.utils import get_metadata, normalize_path
 # wait time in seconds to check for queue emptiness
 WAIT_TIME = 0.25
 
+# size of the shared memory buffer for current file path
+CURRENT_FILE_BUFFER_SIZE = 512
+
 # cache the current working directory
 CWD = os.getcwd()
 
@@ -226,6 +229,9 @@ class HashWorker:
         self.verbose = verbose
         self.progress = Value("i", 0)  # shared files counter
         self.bytes_hashed = Value(ctypes.c_ulonglong, 0)  # shared bytes counter
+        self.current_file = multiprocessing.Array(
+            ctypes.c_char, CURRENT_FILE_BUFFER_SIZE
+        )
         self.start = start or os.path.relpath(path)
         self.exporter = get_exporter(outfile)
         self.queue = Queue()  # task queue
@@ -297,6 +303,9 @@ class HashWorker:
         if normalized_path == self.outfile:
             return
 
+        # update the current file in shared memory
+        self.update_current_file(path)
+
         # check if the hash is cached
         cached_hash = None
         if cache and not self.force:
@@ -308,10 +317,14 @@ class HashWorker:
             value = cached_hash
             extra = "(cached)"
         else:
-            encoder = get_encoder(self.algo)
-            value = checksum_file(path, encoder)
-            metadata[self.algo] = value
             extra = ""
+            try:
+                encoder = get_encoder(self.algo)
+                value = checksum_file(path, encoder)
+                metadata[self.algo] = value
+            except OSError as e:
+                logger.debug(str(e))
+                return
 
         # print the result if verbose mode is enabled
         if self.verbose >= 2 or (self.verbose == 1 and not cached_hash):
@@ -327,6 +340,15 @@ class HashWorker:
 
         with self.bytes_hashed.get_lock():
             self.bytes_hashed.value += size
+
+    def update_current_file(self, path: str):
+        """Updates the current file in shared memory."""
+        encoded = path.encode("utf-8")[: CURRENT_FILE_BUFFER_SIZE - 1]
+        with self.current_file.get_lock():
+            self.current_file[: len(encoded)] = encoded
+            self.current_file[len(encoded) :] = b"\x00" * (
+                CURRENT_FILE_BUFFER_SIZE - len(encoded)
+            )  # null-pad
 
     def run(self):
         """Runs the worker."""
@@ -361,6 +383,11 @@ class HashWorker:
     def progress_bytes(self):
         """Returns the total bytes hashed so far."""
         return self.bytes_hashed.value
+
+    def progress_filename(self) -> str:
+        with self.current_file.get_lock():
+            raw = bytes(self.current_file[:])
+            return raw.split(b"\x00", 1)[0].decode("utf-8", errors="replace")
 
     def is_done(self):
         """Checks if the worker has completed its tasks."""

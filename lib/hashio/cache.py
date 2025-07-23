@@ -46,8 +46,16 @@ from typing import Optional
 from hashio.config import DEFAULT_DB_PATH
 from hashio.logger import logger
 
+# sqlite3 OperationalError messages that indicate a locked database
+LOCK_MESSAGES = [
+    "database is locked",
+    "database schema is locked",
+    "database table is locked",
+    "database is busy",
+]
 
-def with_retry(retries: int = 5, delay: float = 0.1, backoff: float = 2.0):
+
+def with_retry(retries: int = 10, delay: float = 0.2, backoff: float = 2.0):
     """Decorator to retry a function if it raises an OperationalError due to a
     locked database.
 
@@ -64,19 +72,19 @@ def with_retry(retries: int = 5, delay: float = 0.1, backoff: float = 2.0):
                 try:
                     return fn(*args, **kwargs)
                 except sqlite3.OperationalError as e:
-                    if "database is locked" in str(e):
+                    if any(msg in str(e).lower() for msg in LOCK_MESSAGES):
                         try:
-                            # args[0] is self
-                            if args[0].conn.in_transaction:
+                            if args[0].conn.in_transaction:  # args[0] is self
                                 args[0].conn.rollback()
                         except Exception:
                             pass
                         time.sleep(_delay)
                         _delay *= backoff
                     else:
+                        logger.warning("sqlite3.OperationalError: %s", str(e))
                         raise
             raise RuntimeError(
-                f"{fn.__name__} failed after {retries} retries due to database lock."
+                f"{fn.__name__} failed after {retries} retries due to database lock. {e}"
             )
 
         return wrapper
@@ -338,7 +346,7 @@ class Cache:
         row = cur.fetchone()
         return row[0] if row else None
 
-    @with_retry(retries=10, delay=0.5)
+    @with_retry()
     def put_file_and_get_id(
         self, path: str, mtime: float, algo: str, hashval: str, size: int, inode: int
     ):
@@ -412,21 +420,18 @@ class Cache:
         self.conn.commit()
 
     @with_retry()
-    def add_to_snapshot(self, snapshot_id: int, path: str, mtime: float, algo: str):
+    def add_to_snapshot(self, snapshot_id: int, file_id: int):
         """Link an entry to a snapshot.
 
         :param snapshot_id: The ID of the snapshot to link to.
-        :param path: The file path to link.
-        :param mtime: The last modified time of the file.
-        :param algo: The hashing algorithm used.
+        :param file_id: The file id to link.
         """
         self.conn.execute(
             """
-            INSERT OR IGNORE INTO snapshot_files
-            (snapshot_id, file_path, file_mtime, file_algo)
-            VALUES (?, ?, ?, ?)
+            INSERT OR IGNORE INTO snapshot_files (snapshot_id, file_id)
+            VALUES (?, ?)
             """,
-            (snapshot_id, path, mtime, algo),
+            (snapshot_id, file_id),
         )
 
     @with_retry()
