@@ -47,7 +47,7 @@ from hashio.config import DEFAULT_DB_PATH
 from hashio.logger import logger
 
 
-def with_retry(retries: int = 5, delay: float = 0.1, backoff: float = 2.0):
+def with_retry(retries: int = 10, delay: float = 0.2, backoff: float = 2.0):
     """Decorator to retry a function if it raises an OperationalError due to a
     locked database.
 
@@ -66,8 +66,7 @@ def with_retry(retries: int = 5, delay: float = 0.1, backoff: float = 2.0):
                 except sqlite3.OperationalError as e:
                     if "database is locked" in str(e):
                         try:
-                            # args[0] is self
-                            if args[0].conn.in_transaction:
+                            if args[0].conn.in_transaction:  # args[0] is self
                                 args[0].conn.rollback()
                         except Exception:
                             pass
@@ -76,7 +75,7 @@ def with_retry(retries: int = 5, delay: float = 0.1, backoff: float = 2.0):
                     else:
                         raise
             raise RuntimeError(
-                f"{fn.__name__} failed after {retries} retries due to database lock."
+                f"{fn.__name__} failed after {retries} retries due to database lock. {e}"
             )
 
         return wrapper
@@ -338,7 +337,7 @@ class Cache:
         row = cur.fetchone()
         return row[0] if row else None
 
-    @with_retry(retries=10, delay=0.5)
+    @with_retry()
     def put_file_and_get_id(
         self, path: str, mtime: float, algo: str, hashval: str, size: int, inode: int
     ):
