@@ -393,7 +393,7 @@ def main():
         print("stopping...")
 
     finally:
-        if not verbose:
+        if len(paths) > 1 and not (args.verbose or args.summarize):
             print("")
 
         if args.summarize:
