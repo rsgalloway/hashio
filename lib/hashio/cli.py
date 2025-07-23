@@ -229,10 +229,6 @@ def start_progress_thread(
             # tqdm expects raw byte count for n
             pbar.n = bytes_now
             filename = os.path.basename(worker.progress_filename())[:50]
-            # terminal_width = os.get_terminal_size().columns
-            # max_filename_length = terminal_width - 50
-            # if len(filename) > max_filename_length:
-            #     filename = filename[: max_filename_length - 3] + "..."
             pbar.set_postfix(
                 {
                     "files/s": f"{files_per_sec:.2f}",
@@ -253,6 +249,7 @@ def start_progress_thread(
             }
         )
         pbar.refresh()
+        # avoid closing the progress bar immediately
         # pbar.close()
 
     thread = threading.Thread(target=watch, daemon=True)

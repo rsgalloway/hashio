@@ -347,7 +347,7 @@ class HashWorker:
         with self.current_file.get_lock():
             self.current_file[: len(encoded)] = encoded
             self.current_file[len(encoded) :] = b"\x00" * (
-                512 - len(encoded)
+                CURRENT_FILE_BUFFER_SIZE - len(encoded)
             )  # null-pad
 
     def run(self):
