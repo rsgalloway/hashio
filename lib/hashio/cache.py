@@ -193,7 +193,7 @@ class Cache:
         self.conn.execute("PRAGMA journal_mode=WAL")
         # set synchronous mode to NORMAL for better performance
         self.conn.execute("PRAGMA synchronous=NORMAL")
-        # set busy timeout to 2 seconds to handle locked database issues
+        # set busy timeout to 0ms to rely on retry decorator for lock handling
         self.conn.execute("PRAGMA busy_timeout=0")
         # create indexes for faster lookups
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)")
