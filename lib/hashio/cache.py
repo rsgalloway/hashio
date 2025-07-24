@@ -36,6 +36,7 @@ Contains global cache classes and functions.
 import fnmatch
 import functools
 import os
+import random
 import sqlite3
 import time
 
@@ -55,36 +56,39 @@ LOCK_MESSAGES = [
 ]
 
 
-def with_retry(retries: int = 10, delay: float = 0.2, backoff: float = 2.0):
-    """Decorator to retry a function if it raises an OperationalError due to a
-    locked database.
-
-    :param retries: Number of times to retry the function.
-    :param delay: Initial delay between retries in seconds.
-    :param backoff: Multiplier for the delay after each retry.
-    """
+def with_retry(retries: int = 5, delay: float = 0.2, backoff: float = 1.25):
+    """Retry a function on SQLite 'database is locked' errors using exponential backoff."""
 
     def decorator(fn):
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
             _delay = delay
+            last_err = None
             for i in range(retries):
                 try:
                     return fn(*args, **kwargs)
                 except sqlite3.OperationalError as e:
-                    if any(msg in str(e).lower() for msg in LOCK_MESSAGES):
-                        try:
-                            if args[0].conn.in_transaction:  # args[0] is self
-                                args[0].conn.rollback()
-                        except Exception:
-                            pass
-                        time.sleep(_delay)
+                    logger.debug(
+                        f"{fn.__name__} attempt {i + 1} with delay {_delay:.2f}s"
+                    )
+                    err_msg = str(e).lower()
+                    if any(msg in err_msg for msg in LOCK_MESSAGES):
+                        last_err = e
+                        # rollback if in transaction
+                        conn = getattr(args[0], "conn", None)
+                        if conn and getattr(conn, "in_transaction", False):
+                            try:
+                                conn.rollback()
+                            except Exception:
+                                pass
+                        # jitter to reduce contention
+                        time.sleep(_delay + random.uniform(0, 0.1))
                         _delay *= backoff
                     else:
                         logger.warning("sqlite3.OperationalError: %s", str(e))
                         raise
             raise RuntimeError(
-                f"{fn.__name__} failed after {retries} retries due to database lock. {e}"
+                f"{fn.__name__} failed after {retries} retries with error: {last_err}"
             )
 
         return wrapper
@@ -189,8 +193,8 @@ class Cache:
         self.conn.execute("PRAGMA journal_mode=WAL")
         # set synchronous mode to NORMAL for better performance
         self.conn.execute("PRAGMA synchronous=NORMAL")
-        # set busy timeout to 5 seconds to handle locked database issues
-        self.conn.execute("PRAGMA busy_timeout=5000")
+        # set busy timeout to 2 seconds to handle locked database issues
+        self.conn.execute("PRAGMA busy_timeout=0")
         # create indexes for faster lookups
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_files_algo ON files(algo)")
