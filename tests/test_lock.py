@@ -36,15 +36,6 @@ def test_retry_on_real_db_lock():
     """Test that the with_retry decorator retries on a real database lock."""
     from hashio.cache import with_retry
 
-    def hold_lock(db_path, table):
-        conn = sqlite3.connect(db_path)
-        conn.execute(f"CREATE TABLE IF NOT EXISTS {table} (id INTEGER PRIMARY KEY)")
-        conn.execute("BEGIN EXCLUSIVE")  # lock the DB
-        conn.execute(f"INSERT INTO {table} VALUES (1)")
-        time.sleep(1.5)  # hold the lock for a bit
-        conn.commit()
-        conn.close()
-
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = os.path.join(tmpdir, "test.db")
         table = "foo"
