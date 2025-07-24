@@ -43,6 +43,8 @@ logger.setLevel(LOG_LEVEL)
 
 # add stream handler
 stream_handler = logging.StreamHandler()
-formatter = logging.Formatter("%(asctime)15s : %(message)s")
+formatter = logging.Formatter(
+    "%(asctime)s [%(processName)s %(process)d] [%(filename)s:%(lineno)d] %(levelname)s: %(message)s"
+)
 stream_handler.setFormatter(formatter)
 logger.addHandler(stream_handler)
