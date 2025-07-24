@@ -143,9 +143,13 @@ def writer_process(
                     continue
 
                 if not cache.has(abspath, mtime, algo, hashval):
-                    file_id = cache.put_file_and_get_id(
-                        abspath, mtime, algo, hashval, size, inode
-                    )
+                    try:
+                        file_id = cache.put_file_and_get_id(
+                            abspath, mtime, algo, hashval, size, inode
+                        )
+                    except RuntimeError as e:
+                        logger.error("cache error for %s: %s", abspath, e)
+                        # buffer.append((npath, abspath, data))
                 else:
                     file_id = cache.get_file_id(abspath, mtime, algo)
 
