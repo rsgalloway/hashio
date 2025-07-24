@@ -149,7 +149,12 @@ def writer_process(
                         )
                     except RuntimeError as e:
                         logger.error("cache error for %s: %s", abspath, e)
+                        # TODO: requeue failed writes
                         # buffer.append((npath, abspath, data))
+                        # data["retry_count"] = data.get("retry_count", 0) + 1
+                        # if data["retry_count"] > 3:
+                        #     logger.error("Max retries reached for %s", abspath)
+                        #     continue
                 else:
                     file_id = cache.get_file_id(abspath, mtime, algo)
 
