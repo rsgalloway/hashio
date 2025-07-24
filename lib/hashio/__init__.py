@@ -35,7 +35,7 @@ Custom file and directory checksum tool.
 
 __author__ = "ryan@rsgalloway.com"
 __prog__ = "hashio"
-__version__ = "0.4.4"
+__version__ = "0.4.5"
 
 try:
     import envstack
