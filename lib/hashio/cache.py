@@ -298,10 +298,17 @@ class Cache:
         :param other_db_path: The path to the other SQLite database file.
         """
         self.conn.execute("ATTACH DATABASE ? AS tempdb", (path,))
-        self.conn.execute(
+        # do not insert IDs
+        self.conn.executescript(
             """
-            INSERT OR IGNORE INTO files
-            SELECT * FROM tempdb.files
+            INSERT OR IGNORE INTO files (path, mtime, algo, hash, size, inode)
+            SELECT path, mtime, algo, hash, size, inode FROM tempdb.files;
+
+            INSERT OR IGNORE INTO snapshots (name, created_at, path)
+            SELECT name, created_at, path FROM tempdb.snapshots;
+
+            INSERT OR IGNORE INTO snapshot_files (snapshot_id, file_id)
+            SELECT snapshot_id, file_id FROM tempdb.snapshot_files;
         """
         )
         self.conn.commit()

@@ -124,7 +124,7 @@ class HashWorker:
         self.bytes_hashed = Value(ctypes.c_ulonglong, 0)  # shared bytes counter
         self.temp_cache = None
         self.temp_db_path = None
-        self.temp_db_list = Manager().list()
+        self.temp_db_queue = Manager().Queue()
         self.current_file = multiprocessing.Array(
             ctypes.c_char, CURRENT_FILE_BUFFER_SIZE
         )
@@ -192,7 +192,8 @@ class HashWorker:
         # check if the hash is cached
         cached_hash = None
         if cache and not self.force:
-            cached_hash = cache.get(path, mtime, self.algo)
+            abs_path = os.path.abspath(path)
+            cached_hash = cache.get(abs_path, mtime, self.algo)
 
         # if the hash is cached, use it; otherwise compute it
         if cached_hash and not self.force:
@@ -241,9 +242,7 @@ class HashWorker:
             dbname = f"worker_{pid}_{uuid.uuid4().hex}.sql"
             self.temp_db_path = os.path.join(config.CACHE_ROOT, "temp", dbname)
             self.temp_cache = Cache(self.temp_db_path)
-
-        if self.temp_db_path not in self.temp_db_list:
-            self.temp_db_list.append(self.temp_db_path)
+            self.temp_db_queue.put(self.temp_db_path)
 
         npath = data.get("normalized_path")
         abspath = data.get("abs_path")
@@ -298,16 +297,27 @@ class HashWorker:
         self.pool.close()
         self.pool.join()
 
+        # final commit and close on temp dbs
         if self.temp_cache:
             self.temp_cache.commit()
             self.temp_cache.close()
 
         # merge the temporary caches into the main cache
         main_cache = Cache()
-        logger.debug("Merging temp caches: %s", list(self.temp_db_list))
-        for db_path in self.temp_db_list:
-            main_cache.merge(db_path)
-            os.remove(db_path)
+        merged_paths = set()
+
+        while not self.temp_db_queue.empty():
+            try:
+                db_path = self.temp_db_queue.get_nowait()
+                if db_path in merged_paths:
+                    continue  # avoid merging same file twice
+                logger.debug("Merging %s into main cache", db_path)
+                main_cache.merge(db_path)
+                os.remove(db_path)
+                merged_paths.add(db_path)
+            except queue.Empty:
+                break
+
         main_cache.commit()
         main_cache.close()
 
