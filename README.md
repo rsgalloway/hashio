@@ -221,3 +221,12 @@ from hashio.encoder import checksum_folder, XXH64Encoder
 encoder = XXH64Encoder()
 value = checksum_folder(folder, encoder)
 ```
+
+## Cache
+
+Run the following command to safely apply the latest schema updates and create
+any missing indexes:
+
+```bash
+$ hashio --update-cache
+```

@@ -135,6 +135,11 @@ def parse_args():
         help="show summary of results",
     )
     parser.add_argument(
+        "--update-cache",
+        action="store_true",
+        help="apply the latest schema updates and create any missing indexes",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="count",
@@ -262,8 +267,18 @@ def main():
 
     args = parse_args()
 
+    # validate and update the cache
+    if args.update_cache:
+        from hashio.cache import Cache
+
+        cache = Cache()
+        cache._ensure_db()
+        cache.close()
+        print("Cache DB updated.")
+        return 0
+
     # query cache or list all entries
-    if args.query:
+    elif args.query:
         cache = Cache()
         results = cache.query(args.query, args.algo, args.since)
         if results:

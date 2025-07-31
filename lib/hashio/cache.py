@@ -198,6 +198,11 @@ class Cache:
         # create indexes for faster lookups
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_files_algo ON files(algo)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_files_hash ON files(hash)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_files_inode ON files(inode)")
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_hash_inode ON files(hash, inode)"
+        )
         self.conn.commit()
 
     def flush(self):
