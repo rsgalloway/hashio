@@ -88,7 +88,7 @@ def with_retry(retries: int = 5, delay: float = 0.2, backoff: float = 1.25):
                         logger.warning("sqlite3.OperationalError: %s", str(e))
                         raise
             raise RuntimeError(
-                f"{fn.__name__} failed after {retries} retries with error: {last_err}"
+                f"{fn.__name__} failed after {retries} retries with error: {last_err} ({args[0].db_path})"
             )
 
         return wrapper
@@ -290,20 +290,21 @@ class Cache:
         row = cur.fetchone()
         return row[0] if row else None
 
-    def merge(self, other_db_path: str):
+    def merge(self, path: str):
         """Merge another database into this cache. This will insert all unique
         entries from the other database into the current cache. This will lock
         the database for the duration of the merge.
 
         :param other_db_path: The path to the other SQLite database file.
         """
-        self.conn.execute(f"ATTACH DATABASE '{other_db_path}' AS tempdb")
+        self.conn.execute("ATTACH DATABASE ? AS tempdb", (path,))
         self.conn.execute(
             """
             INSERT OR IGNORE INTO files
             SELECT * FROM tempdb.files
         """
         )
+        self.conn.commit()
         self.conn.execute("DETACH DATABASE tempdb")
 
     def query(
