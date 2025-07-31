@@ -117,7 +117,9 @@ def writer_process(
     buffer = []
     last_flush = time.time()
 
-    cache = Cache() if use_cache else None
+    temp_db_path = f"{path}/.hashio_worker_{os.getpid()}.sql"
+    cache = Cache(temp_db_path) if use_cache else None
+
     snapshot_id = (
         cache.replace_snapshot(snapshot_name, path)
         if (cache and snapshot_name)

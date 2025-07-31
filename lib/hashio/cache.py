@@ -261,7 +261,8 @@ class Cache:
     def put(
         self, path: str, mtime: float, algo: str, hashval: str, size: int, inode: int
     ):
-        """Store a hash entry in the cache.
+        """Store a hash entry in the cache. If the entry already exists, it will
+        return the existing ID instead of inserting a new row.
 
         :param path: The file path to store.
         :param mtime: The last modified time of the file.
@@ -288,6 +289,22 @@ class Cache:
         )
         row = cur.fetchone()
         return row[0] if row else None
+
+    def merge(self, other_db_path: str):
+        """Merge another database into this cache. This will insert all unique
+        entries from the other database into the current cache. This will lock
+        the database for the duration of the merge.
+
+        :param other_db_path: The path to the other SQLite database file.
+        """
+        self.conn.execute(f"ATTACH DATABASE '{other_db_path}' AS tempdb")
+        self.conn.execute(
+            """
+            INSERT OR IGNORE INTO files
+            SELECT * FROM tempdb.files
+        """
+        )
+        self.conn.execute("DETACH DATABASE tempdb")
 
     def query(
         self, pattern: str, algo: Optional[str] = None, since: Optional[str] = None

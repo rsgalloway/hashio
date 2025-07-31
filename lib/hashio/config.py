@@ -48,10 +48,13 @@ CACHE_ROOT = {
     ),
 }.get(PLATFORM)
 
+# stores temporary worker cache files
+TEMP_CACHE_DIR = os.path.join(CACHE_ROOT, "temp")
+
 # default cache filename
 CACHE_FILENAME = os.getenv("HASHIO_FILE", "hash.json")
 
-# default database path
+# default central database filename
 DEFAULT_DB_PATH = os.getenv("HASHIO_DB", os.path.join(CACHE_ROOT, "hash.sql"))
 
 # the default hashing algorithm to use
