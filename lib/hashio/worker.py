@@ -200,8 +200,10 @@ class HashWorker:
             metadata[self.algo] = cached_hash
             value = cached_hash
             extra = "(cached)"
+            do_write = False
         else:
             extra = ""
+            do_write = True
             try:
                 encoder = get_encoder(self.algo)
                 value = checksum_file(path, encoder)
@@ -214,18 +216,20 @@ class HashWorker:
         if self.verbose >= 2 or (self.verbose == 1 and not cached_hash):
             print(f"{value}  {normalized_path} {extra}")
 
-        with self.lock:
-            abs_path = os.path.abspath(path)
-            self.queue.put(
-                {
-                    "task": "write",
-                    "path": path,
-                    "normalized_path": normalized_path,
-                    "abs_path": abs_path,
-                    "metadata": metadata,
-                }
-            )
-            self.pending -= 1
+        # write the result to the output file if required
+        if do_write:
+            with self.lock:
+                abs_path = os.path.abspath(path)
+                self.queue.put(
+                    {
+                        "task": "write",
+                        "path": path,
+                        "normalized_path": normalized_path,
+                        "abs_path": abs_path,
+                        "metadata": metadata,
+                    }
+                )
+                self.pending -= 1
 
         with self.progress.get_lock():
             self.progress.value += 1
@@ -290,17 +294,11 @@ class HashWorker:
                 CURRENT_FILE_BUFFER_SIZE - len(encoded)
             )  # null-pad
 
-    def run(self):
-        """Runs the worker."""
-        self.start_time = time.time()
-        self.add_path_to_queue(self.path)
-        self.pool.close()
-        self.pool.join()
-
+    def merge(self):
+        """Merges temporary caches into the main cache."""
         # final commit and close on temp dbs
         if self.temp_cache:
             self.temp_cache.commit()
-            self.temp_cache.close()
 
         # merge the temporary caches into the main cache
         main_cache = Cache()
@@ -321,10 +319,23 @@ class HashWorker:
         main_cache.commit()
         main_cache.close()
 
-        self.queue.close()
-        self.queue.join_thread()
-        self.total_time = time.time() - self.start_time
-        self.done.set()
+        if self.temp_cache:
+            self.temp_cache.close()
+
+    def run(self):
+        """Runs the worker."""
+        self.start_time = time.time()
+        self.add_path_to_queue(self.path)
+
+        try:
+            self.pool.close()
+            self.pool.join()
+        finally:
+            self.merge()
+            self.queue.close()
+            self.queue.join_thread()
+            self.total_time = time.time() - self.start_time
+            self.done.set()
 
     def stop(self):
         """Stops the worker and cleans up resources."""
@@ -374,6 +385,8 @@ class HashWorker:
                 break  # clean exit
             except Exception as err:
                 logger.error(err)
+            finally:
+                worker.merge()
 
 
 def run_profiled(path: str):
