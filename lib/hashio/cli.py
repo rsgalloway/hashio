@@ -269,8 +269,6 @@ def main():
 
     # validate and update the cache
     if args.update_cache:
-        from hashio.cache import Cache
-
         cache = Cache()
         cache._ensure_db()
         cache.close()
