@@ -164,6 +164,7 @@ class HashWorker:
 
         :param path: search path
         """
+        logger.debug("Exploring path %s", path)
         for filename in utils.walk(path, filetype="f", force=self.force):
             self.add_hash_to_queue(filename)
 
@@ -212,6 +213,10 @@ class HashWorker:
                 logger.debug(str(e))
                 return
 
+        # periodic shard merge interval
+        interval = 5
+        last_execution_time = time.monotonic()
+
         # print the result if verbose mode is enabled
         if self.verbose >= 2 or (self.verbose == 1 and not cached_hash):
             print(f"{value}  {normalized_path} {extra}")
@@ -231,6 +236,10 @@ class HashWorker:
                 )
                 self.pending -= 1
 
+        # periodically merge into the main cache
+        elif time.time() - last_execution_time >= interval:
+            self.merge()
+
         with self.progress.get_lock():
             self.progress.value += 1
 
@@ -246,6 +255,7 @@ class HashWorker:
             dbname = f"worker_{pid}_{uuid.uuid4().hex}.sql"
             self.temp_db_path = os.path.join(config.CACHE_ROOT, "temp", dbname)
             self.temp_cache = Cache(self.temp_db_path)
+            logger.debug("Adding worker cache to queue: %s", self.temp_db_path)
             self.temp_db_queue.put(self.temp_db_path)
 
         npath = data.get("normalized_path")
@@ -309,18 +319,15 @@ class HashWorker:
                 db_path = self.temp_db_queue.get_nowait()
                 if db_path in merged_paths:
                     continue  # avoid merging same file twice
-                logger.debug("Merging %s into main cache", db_path)
-                main_cache.merge(db_path)
-                os.remove(db_path)
-                merged_paths.add(db_path)
+                with self.lock:
+                    logger.debug("Merging %s into main cache", db_path)
+                    main_cache.merge(db_path)
+                    os.remove(db_path)
             except queue.Empty:
                 break
 
-        main_cache.commit()
-        main_cache.close()
-
         if self.temp_cache:
-            self.temp_cache.close()
+            self.temp_cache = None
 
     def run(self):
         """Runs the worker."""
@@ -344,7 +351,10 @@ class HashWorker:
             self.pool.join()
         self.total_time = time.time() - self.start_time
         self.done.set()
-        logger.debug("stopping %s", multiprocessing.current_process())
+        if not self.verbose:
+            logger.info("Merging results to central cache...")
+        self.merge()
+        logger.debug("Stopping %s", multiprocessing.current_process())
 
     def progress_count(self):
         """Returns the current progress count."""
@@ -372,21 +382,20 @@ class HashWorker:
                 if data == -1:
                     break
                 task = data["task"]
-                path = data["path"]
                 if task == "search":
-                    worker.explore_path(path)
+                    worker.explore_path(data["path"])
                 elif task == "hash":
-                    worker.do_hash(path)
+                    worker.do_hash(data["path"])
                 elif task == "write":
                     worker.write(data)
+                elif task == "merge":
+                    worker.merge()
             except queue.Empty:
                 break
             except (KeyboardInterrupt, EOFError):
                 break  # clean exit
             except Exception as err:
                 logger.error(err)
-            finally:
-                worker.merge()
 
 
 def run_profiled(path: str):
