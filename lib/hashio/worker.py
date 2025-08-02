@@ -296,7 +296,6 @@ class HashWorker:
             self.temp_cache.batch_add_snapshot_links(snapshot_id, snapshot_file_ids)
 
         self.temp_cache.commit()
-        # self.temp_cache.close()
 
     def update_current_file(self, path: str):
         """Updates the current file in shared memory."""
