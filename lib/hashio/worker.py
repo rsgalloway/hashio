@@ -111,6 +111,7 @@ class HashWorker:
         """
         self.path = path
         self.algo = algo
+        self.buffer_size = utils.get_buffer_size(path=path)
         self.outfile = outfile
         self.snapshot = snapshot
         self.procs = procs
@@ -165,6 +166,7 @@ class HashWorker:
         :param path: search path
         """
         logger.debug("Exploring path %s", path)
+        logger.debug("Using read buffer size: %s", self.buffer_size)
         for filename in utils.walk(path, filetype="f", force=self.force):
             self.add_hash_to_queue(filename)
 
@@ -207,7 +209,7 @@ class HashWorker:
             do_write = True
             try:
                 encoder = get_encoder(self.algo)
-                value = checksum_file(path, encoder)
+                value = checksum_file(path, encoder, buffer_size=self.buffer_size)
                 metadata[self.algo] = value
             except OSError as e:
                 logger.debug(str(e))
