@@ -302,7 +302,7 @@ def get_encoder_class(name: str):
     return
 
 
-def checksum_data(data: bytes, encoder: Encoder):
+def checksum_data(data: bytes, encoder: Encoder, buffer_size: int = config.BUF_SIZE):
     """Checksum contents from a binary stream. Data should be a byte string.
     Note: resets encoder, existing data will be lost.
 
@@ -310,17 +310,18 @@ def checksum_data(data: bytes, encoder: Encoder):
 
     :param data: the byte string data to hash
     :param encoder: instance of Encoder subclass
+    :param buffer_size: size of each read chunk in bytes ($BUF_SIZE)
     :return: hexdigest of the checksum
     """
     encoder.reset()
-    for i in range(0, len(data), config.BUF_SIZE):
-        encoder.update(data[i : i + config.BUF_SIZE])
+    for i in range(0, len(data), buffer_size):
+        encoder.update(data[i : i + buffer_size])
     value = encoder.hexdigest()
     encoder.reset()
     return value
 
 
-def checksum_file(path: str, encoder: Encoder):
+def checksum_file(path: str, encoder: Encoder, buffer_size: int = config.BUF_SIZE):
     """Creates a checksum for a given filepath and encoder. Note: resets
     encoder, existing data will be lost.
 
@@ -331,7 +332,7 @@ def checksum_file(path: str, encoder: Encoder):
     :return: hexdigest of the checksum
     """
     encoder.reset()
-    for data in read_file(path):
+    for data in read_file(path, buffer_size=buffer_size):
         encoder.update(data)
     value = encoder.hexdigest()
     encoder.reset()
