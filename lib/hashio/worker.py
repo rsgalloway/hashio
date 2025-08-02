@@ -215,7 +215,7 @@ class HashWorker:
 
         # periodic shard merge interval
         interval = 5
-        last_execution_time = time.monotonic()
+        last_execution_time = time.time()
 
         # print the result if verbose mode is enabled
         if self.verbose >= 2 or (self.verbose == 1 and not cached_hash):
@@ -239,6 +239,7 @@ class HashWorker:
         # periodically merge into the main cache
         elif time.time() - last_execution_time >= interval:
             self.merge()
+            last_execution_time = time.time()
 
         with self.progress.get_lock():
             self.progress.value += 1
@@ -253,7 +254,7 @@ class HashWorker:
         if self.temp_cache is None:
             pid = os.getpid()
             dbname = f"worker_{pid}_{uuid.uuid4().hex}.sql"
-            self.temp_db_path = os.path.join(config.CACHE_ROOT, "temp", dbname)
+            self.temp_db_path = os.path.join(config.TEMP_CACHE_DIR, dbname)
             self.temp_cache = Cache(self.temp_db_path)
             logger.debug("Adding worker cache to queue: %s", self.temp_db_path)
             self.temp_db_queue.put(self.temp_db_path)
@@ -322,6 +323,7 @@ class HashWorker:
                 with self.lock:
                     logger.debug("Merging %s into main cache", db_path)
                     main_cache.merge(db_path)
+                    merged_paths.add(db_path)
                     os.remove(db_path)
             except queue.Empty:
                 break

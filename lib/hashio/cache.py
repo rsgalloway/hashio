@@ -295,7 +295,7 @@ class Cache:
         entries from the other database into the current cache. This will lock
         the database for the duration of the merge.
 
-        :param other_db_path: The path to the other SQLite database file.
+        :param path: The path to the other SQLite database file.
         """
         self.conn.execute("ATTACH DATABASE ? AS tempdb", (path,))
         # do not insert IDs
