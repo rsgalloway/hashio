@@ -84,6 +84,7 @@ setup(
         ],
     },
     install_requires=[
+        "envstack==0.8.9",
         "lxml==5.3.0",
         "tqdm==4.67.1",
         "xxhash==3.5.0",
