@@ -130,6 +130,7 @@ def parse_args():
         help="skip ignorables",
     )
     parser.add_argument(
+        "-s",
         "--summarize",
         action="store_true",
         help="show summary of results",
