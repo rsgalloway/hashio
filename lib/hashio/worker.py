@@ -255,11 +255,12 @@ class HashWorker:
 
         if self.temp_cache is None:
             pid = os.getpid()
-            dbname = f"worker_{pid}_{uuid.uuid4().hex}.sql"
-            self.temp_db_path = os.path.join(config.TEMP_CACHE_DIR, dbname)
-            self.temp_cache = Cache(self.temp_db_path)
-            logger.debug("Adding worker cache to queue: %s", self.temp_db_path)
-            self.temp_db_queue.put(self.temp_db_path)
+            with self.lock:
+                dbname = f"worker_{pid}_{uuid.uuid4().hex}.sql"
+                self.temp_db_path = os.path.join(config.TEMP_CACHE_DIR, dbname)
+                self.temp_cache = Cache(self.temp_db_path)
+                logger.debug("Adding worker cache to queue: %s", self.temp_db_path)
+                self.temp_db_queue.put(self.temp_db_path)
 
         npath = data.get("normalized_path")
         abspath = data.get("abs_path")
