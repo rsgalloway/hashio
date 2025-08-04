@@ -95,6 +95,7 @@ class HashWorker:
         start: str = None,
         algo: str = config.DEFAULT_ALGO,
         snapshot: str = None,
+        merge_interval: int = config.MERGE_INTERVAL,
         force: bool = False,
         verbose: int = 0,
     ):
@@ -106,6 +107,7 @@ class HashWorker:
         :param start: starting path for relative paths in output
         :param algo: hashing algorithm to use
         :param snapshot: snapshot name to use
+        :param merge_interval: interval in seconds to merge temporary caches
         :param force: hash all files including ignorable patterns
         :param verbose: if True, print verbose output
         """
@@ -126,6 +128,8 @@ class HashWorker:
         self.temp_cache = None
         self.temp_db_path = None
         self.temp_db_queue = Manager().Queue()
+        self.merge_interval = merge_interval
+        self.last_execution_time = 0
         self.current_file = multiprocessing.Array(
             ctypes.c_char, CURRENT_FILE_BUFFER_SIZE
         )
@@ -215,10 +219,6 @@ class HashWorker:
                 logger.debug(str(e))
                 return
 
-        # periodic shard merge interval
-        interval = 5
-        last_execution_time = time.time()
-
         # print the result if verbose mode is enabled
         if self.verbose >= 2 or (self.verbose == 1 and not cached_hash):
             print(f"{value}  {normalized_path} {extra}")
@@ -239,9 +239,9 @@ class HashWorker:
                 self.pending -= 1
 
         # periodically merge into the main cache
-        elif time.time() - last_execution_time >= interval:
+        elif time.time() - self.last_execution_time >= self.merge_interval:
             self.merge()
-            last_execution_time = time.time()
+            self.last_execution_time = time.time()
 
         with self.progress.get_lock():
             self.progress.value += 1

@@ -109,3 +109,6 @@ BUF_SIZE = safe_eval(os.getenv("BUF_SIZE", 1024 * 1024))
 
 # maximum number of search and hash processes to spawn
 MAX_PROCS = safe_eval(os.getenv("MAX_PROCS", 10))
+
+# default merge interval in seconds
+MERGE_INTERVAL = safe_eval(os.getenv("MERGE_INTERVAL", 5))
