@@ -53,6 +53,7 @@ LOCK_MESSAGES = [
     "database schema is locked",
     "database table is locked",
     "database is busy",
+    "already in use",
 ]
 
 
@@ -290,6 +291,7 @@ class Cache:
         row = cur.fetchone()
         return row[0] if row else None
 
+    @with_retry()
     def merge(self, path: str):
         """Merge another database into this cache. This will insert all unique
         entries from the other database into the current cache. This will lock
@@ -413,6 +415,7 @@ class Cache:
         self.conn.commit()
         return cur.lastrowid
 
+    @with_retry()
     def replace_snapshot(self, name: str, path: str = None):
         """Deletes any existing snapshot with the same name and creates a fresh one.
 
