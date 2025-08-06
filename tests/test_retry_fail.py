@@ -32,6 +32,7 @@ def reset_hashio_env(tmp_path):
 
 
 def test_hashworker_retries_on_locked_cache(monkeypatch, tmp_path):
+    """Test that HashWorker retries when the cache is locked by another process."""
 
     from hashio.cache import Cache
     from hashio.worker import HashWorker
@@ -59,7 +60,10 @@ def test_hashworker_retries_on_locked_cache(monkeypatch, tmp_path):
 
     # run the worker
     worker = HashWorker(str(file_path), force=True, verbose=True)
-    worker.run()
+
+    # this should raise RuntimeError due to the lock
+    with pytest.raises(RuntimeError) as exc_info:
+        worker.run()
 
     locker.join()
 

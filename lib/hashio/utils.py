@@ -34,6 +34,7 @@ Contains helper classes and functions.
 
 import fnmatch
 import os
+import platform
 import re
 
 from hashio import config
@@ -55,6 +56,49 @@ def format_bytes(n: int):
             return f"{n:.2f} {unit}"
         n /= 1024
     return f"{n:.2f} PB"
+
+
+def get_block_size(path: str = os.getcwd(), default: int = 4096):
+    """Returns the block size of the file system where the path is located.
+
+    :param path: file system path, defaults to current working directory
+    :param default: default block size in bytes if not available, defaults to 4096
+    :returns: block size in bytes, defaults to 4096 if not available
+    """
+    try:
+        if platform.system() == "Windows":
+            return 128 * 1024
+        stat = os.statvfs(path)
+        return stat.f_frsize or stat.f_bsize
+    except AttributeError:
+        return default
+    except OSError:
+        return default
+
+
+def get_buffer_size(path: str = os.getcwd(), default: int = config.BUF_SIZE):
+    """Determine optimal buffer size for minimizing IOPS during sequential reads.
+    If the block size is greater than 128 KiB, use it as the buffer size.
+
+    :param path: file system path, defaults to current working directory
+    :param default: default buffer size in bytes, defaults to config.BUF_SIZE
+    :returns: buffer size in bytes, defaults to config.BUF_SIZE if not available
+    """
+    try:
+        if default > 0:
+            return int(default)
+
+        block_size = get_block_size(path)
+
+        if block_size >= 128 * 1024:
+            buffer_size = block_size
+        else:
+            buffer_size = block_size * 32
+
+        return min(max(buffer_size, 128 * 1024), 1024 * 1024)
+
+    except Exception:
+        return 256 * 1024
 
 
 def get_metadata(path: str):
@@ -144,15 +188,16 @@ def paths_are_equal(a: str, b: str):
     return normalize_path(a) == normalize_path(b)
 
 
-def read_file(filepath: str):
+def read_file(filepath: str, buffer_size: int = config.BUF_SIZE):
     """File reader data generator.
 
     :param filepath: file to read
+    :param buffer_size: size of each read chunk in bytes ($BUF_SIZE)
     :returns: file data in chunks
     """
     with open(filepath, "rb") as f:
         while True:
-            data = f.read(config.BUF_SIZE)
+            data = f.read(buffer_size)
             if not data:
                 break
             yield data

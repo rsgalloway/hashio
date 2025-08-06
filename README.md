@@ -195,6 +195,43 @@ This prints a summary of file-level changes between two snapshots:
 ~ file was modified
 ```
 
+## Read Buffer Size Optimization
+
+By default, `hashio` uses a fixed read buffer size set in `config.py`. This
+conservative default works well across most systems, but it can be suboptimal
+on filesystems with large block sizes (e.g. network-attached storage).
+
+#### Optional: Enable Dynamic Buffer Sizing
+
+Dynamic read buffer sizing can be enabled to reduce IOPS and improve performance
+on sequential reads. When enabled:
+
+- Filesystem block size is determined via `os.statvfs(path).f_frsize`.
+- If the block size is large (≥ 128 KiB), it is used directly
+- If the block size is small, it is scaled up and clamped
+
+#### Configuration
+
+You can configure buffer size using the `BUF_SIZE` environment variable:
+
+- If `BUF_SIZE` is set to a positive integer, that value is used
+- If `BUF_SIZE` is 0 or a negative value, dynamic buffer sizing is enabled
+- If `BUF_SIZE` is unset, the default fixed size from `config.py` is used
+
+This can be configured either:
+- In your `hashio.env` file (if using [envstack](https://github.com/rsgalloway/envstack)), or
+- Directly in the environment
+
+#### Examples
+
+```bash
+# use a fixed 512 KiB read buffer
+export BUF_SIZE=524288
+
+# enable dynamic sizing based on block size
+export BUF_SIZE=0
+```
+
 ## Python API
 
 Generate a `hash.json` file for a given path (Default is the current working
@@ -220,4 +257,13 @@ Generate a checksum of a folder:
 from hashio.encoder import checksum_folder, XXH64Encoder
 encoder = XXH64Encoder()
 value = checksum_folder(folder, encoder)
+```
+
+## Cache
+
+Run the following command to safely apply the latest schema updates and create
+any missing indexes:
+
+```bash
+$ hashio --update-cache
 ```

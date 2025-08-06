@@ -35,12 +35,4 @@ Custom file and directory checksum tool.
 
 __author__ = "ryan@rsgalloway.com"
 __prog__ = "hashio"
-__version__ = "0.4.5"
-
-try:
-    import envstack
-
-    envstack.init(__prog__)
-
-except Exception as e:
-    pass
+__version__ = "0.4.6"

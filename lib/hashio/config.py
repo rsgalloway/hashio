@@ -33,9 +33,15 @@ __doc__ = """
 Contains default hashio configs and settings.
 """
 
+import envstack
 import logging
 import os
 import platform
+
+from envstack.util import safe_eval
+
+envstack.init("hashio")
+
 
 # default output filename
 HOME = os.getenv("HOME", os.path.expanduser("~"))
@@ -48,10 +54,13 @@ CACHE_ROOT = {
     ),
 }.get(PLATFORM)
 
+# stores temporary worker cache files
+TEMP_CACHE_DIR = os.path.join(CACHE_ROOT, "temp")
+
 # default cache filename
 CACHE_FILENAME = os.getenv("HASHIO_FILE", "hash.json")
 
-# default database path
+# default central database filename
 DEFAULT_DB_PATH = os.getenv("HASHIO_DB", os.path.join(CACHE_ROOT, "hash.sql"))
 
 # the default hashing algorithm to use
@@ -94,8 +103,12 @@ IGNORABLE = os.getenv("HASHIO_IGNORABLE", ",".join(IGNORABLE)).split(",")
 # default logging level
 LOG_LEVEL = os.getenv("LOG_LEVEL", logging.INFO)
 
-# work in 64KB chunks to limit mem usage for large files
-BUF_SIZE = int(os.getenv("BUF_SIZE", 65536))
+# set the read buffer size for file reads. change this value to optimize performance
+# or limit memory usage. default is 1MB.
+BUF_SIZE = safe_eval(os.getenv("BUF_SIZE", 1024 * 1024))
 
 # maximum number of search and hash processes to spawn
-MAX_PROCS = int(os.getenv("MAX_PROCS", 10))
+MAX_PROCS = safe_eval(os.getenv("MAX_PROCS", 10))
+
+# default merge interval in seconds
+MERGE_INTERVAL = safe_eval(os.getenv("MERGE_INTERVAL", 5))

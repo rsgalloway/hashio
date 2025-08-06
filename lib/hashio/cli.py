@@ -130,9 +130,15 @@ def parse_args():
         help="skip ignorables",
     )
     parser.add_argument(
+        "-s",
         "--summarize",
         action="store_true",
         help="show summary of results",
+    )
+    parser.add_argument(
+        "--update-cache",
+        action="store_true",
+        help="apply the latest schema updates and create any missing indexes",
     )
     parser.add_argument(
         "-v",
@@ -262,8 +268,16 @@ def main():
 
     args = parse_args()
 
+    # validate and update the cache
+    if args.update_cache:
+        cache = Cache()
+        cache._ensure_db()
+        cache.close()
+        print("Cache DB updated.")
+        return 0
+
     # query cache or list all entries
-    if args.query:
+    elif args.query:
         cache = Cache()
         results = cache.query(args.query, args.algo, args.since)
         if results:
