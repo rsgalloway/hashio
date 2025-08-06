@@ -184,7 +184,8 @@ class HashWorker:
         size = metadata["size"]
 
         # get the global cache instance
-        cache = Cache()
+        with self.lock:
+            cache = Cache()
 
         # normalize the path for consistent output
         normalized_path = normalize_path(path, start=self.start)
@@ -314,7 +315,9 @@ class HashWorker:
             self.temp_cache.commit()
 
         # merge the temporary caches into the main cache
-        main_cache = Cache()
+        with self.lock:
+            main_cache = Cache()
+
         merged_paths = set()
 
         while not self.temp_db_queue.empty():

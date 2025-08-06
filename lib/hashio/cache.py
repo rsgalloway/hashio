@@ -201,8 +201,12 @@ class Cache:
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_files_algo ON files(algo)")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_files_hash ON files(hash)")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_files_inode ON files(inode)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_files_mtime ON files(mtime)")
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_files_hash_inode ON files(hash, inode)"
+        )
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_path_mtime_algo ON files(path, mtime, algo)"
         )
         self.conn.commit()
 
@@ -291,7 +295,7 @@ class Cache:
         row = cur.fetchone()
         return row[0] if row else None
 
-    @with_retry()
+    @with_retry(retries=10)
     def merge(self, path: str):
         """Merge another database into this cache. This will insert all unique
         entries from the other database into the current cache. This will lock
