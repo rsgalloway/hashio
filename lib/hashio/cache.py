@@ -145,6 +145,7 @@ class Cache:
         self.lru = LRU()
         self._ensure_db()
 
+    @with_retry()
     def _ensure_db(self):
         """Ensure the database and its tables exist, creating them if necessary."""
         if not os.path.exists(os.path.dirname(self.db_path)):
