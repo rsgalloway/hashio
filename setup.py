@@ -52,7 +52,7 @@ except ModuleNotFoundError:
 
 setup(
     name="hashio",
-    version="0.4.6",
+    version="0.4.7",
     description="Custom file and directory checksum tool",
     long_description=long_description,
     long_description_content_type="text/markdown",

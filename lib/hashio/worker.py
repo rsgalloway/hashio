@@ -171,6 +171,7 @@ class HashWorker:
         """
         logger.debug("Exploring path %s", path)
         logger.debug("Using read buffer size: %s", self.buffer_size)
+        logger.debug("Using database: %s", config.DEFAULT_DB_PATH)
         for filename in utils.walk(path, filetype="f", force=self.force):
             self.add_hash_to_queue(filename)
 
@@ -297,7 +298,8 @@ class HashWorker:
         if snapshot_id and snapshot_file_ids:
             self.temp_cache.batch_add_snapshot_links(snapshot_id, snapshot_file_ids)
 
-        self.temp_cache.commit()
+        with self.lock:
+            self.temp_cache.commit()
 
     def update_current_file(self, path: str):
         """Updates the current file in shared memory."""
@@ -312,7 +314,8 @@ class HashWorker:
         """Merges temporary caches into the main cache."""
         # final commit and close on temp dbs
         if self.temp_cache:
-            self.temp_cache.commit()
+            with self.lock:
+                self.temp_cache.commit()
 
         # merge the temporary caches into the main cache
         with self.lock:

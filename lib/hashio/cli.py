@@ -171,6 +171,11 @@ def parse_args():
         help="Query cache for path",
     )
     parser.add_argument(
+        "--merge",
+        metavar="CACHE",
+        help="Merge another cache database into the current one",
+    )
+    parser.add_argument(
         "--snapshot",
         metavar="NAME",
         help="Create a snapshot with given name",
@@ -274,6 +279,16 @@ def main():
         cache._ensure_db()
         cache.close()
         print("Cache DB updated.")
+        return 0
+
+    # merge another cache into the current one
+    elif args.merge:
+        if not os.path.exists(args.merge):
+            print(f"Cache file not found: {args.merge}")
+            return 2
+        cache = Cache()
+        cache.merge(args.merge)
+        print(f"Merged into {cache.db_path}")
         return 0
 
     # query cache or list all entries
