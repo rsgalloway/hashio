@@ -28,10 +28,18 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 #
-
-__doc__ = """
-Contains hash worker class and functions.
 """
+HashWorker updated for **sharded SQLite cache with natural keys**.
+
+Key changes:
+- Uses `(st_dev, st_ino)` as stable natural keys across renames.
+- Writes **directly** to the sharded cache (no more per-process temp DB merges).
+- Creates the snapshot **once** before starting worker processes; children add
+  membership rows using the shared `snapshot_id`.
+- Skip-hash check uses `get_hash(device, inode, mtime_ns, algo)`.
+"""
+
+from __future__ import annotations
 
 import ctypes
 import multiprocessing
@@ -43,7 +51,7 @@ from multiprocessing import Event, Lock, Pool, Manager, Queue, Value
 
 from hashio import config, utils
 from hashio.cache import Cache
-from hashio.encoder import checksum_file
+from hashio.encoder import checksum_file, ENCODER_MAP
 from hashio.logger import logger
 from hashio.utils import get_metadata, normalize_path
 
@@ -90,11 +98,11 @@ class HashWorker:
     def __init__(
         self,
         path: str = os.getcwd(),
-        outfile: str = None,
+        outfile: str | None = None,
         procs: int = config.MAX_PROCS,
-        start: str = None,
+        start: str | None = None,
         algo: str = config.DEFAULT_ALGO,
-        snapshot: str = None,
+        snapshot: str | None = None,
         merge_interval: int = config.MERGE_INTERVAL,
         force: bool = False,
         verbose: int = 0,
@@ -107,15 +115,16 @@ class HashWorker:
         :param start: starting path for relative paths in output
         :param algo: hashing algorithm to use
         :param snapshot: snapshot name to use
-        :param merge_interval: interval in seconds to merge temporary caches
+        :param merge_interval: interval in seconds to COMMIT shard DBs
         :param force: hash all files including ignorable patterns
-        :param verbose: if True, print verbose output
+        :param verbose: verbosity level
         """
         self.path = path
         self.algo = algo
         self.buffer_size = utils.get_buffer_size(path=path)
         self.outfile = outfile
         self.snapshot = snapshot
+        self.snapshot_id: int | None = None
         self.procs = procs
         self.force = force
         self.lock = Lock()
@@ -125,223 +134,215 @@ class HashWorker:
         self.verbose = verbose
         self.progress = Value("i", 0)  # shared files counter
         self.bytes_hashed = Value(ctypes.c_ulonglong, 0)  # shared bytes counter
-        self.temp_cache = None
-        self.temp_db_path = None
-        self.temp_db_queue = Manager().Queue()
         self.merge_interval = merge_interval
-        self.last_execution_time = 0
+        self.last_commit_time = 0.0
         self.current_file = multiprocessing.Array(
             ctypes.c_char, CURRENT_FILE_BUFFER_SIZE
         )
         self.start = start or os.path.relpath(path)
         self.exporter = get_exporter(outfile)
-        self.queue = Queue()  # task queue
-        self.pool = Pool(self.procs, HashWorker.main, (self,))
+        self.queue: Queue = Queue()  # task queue shared by workers
+        self.pool: Pool | None = None
         self.done = Event()
 
+        # Per-process cache handle (created lazily inside each child proc)
+        self._cache = None  # type: ignore
+
+    # ------------------------------ helpers ------------------------------
+
     def __str__(self):
-        """Returns a string representation of the worker."""
         p_name = multiprocessing.current_process().name
         return f"<HashWorker {p_name}>"
 
+    def _get_cache(self) -> Cache:
+        # Each process will have its own Cache instance
+        if self._cache is None:
+            with self.lock:
+                self._cache = Cache()
+        return self._cache
+
     def add_to_queue(self, data: dict):
-        """Adds task data to the queue."""
         with self.lock:
             self.queue.put(data)
 
     def add_path_to_queue(self, path: str):
-        """Add a directory to the search queue.
-
-        :param path: search path
-        """
         self.add_to_queue({"task": "search", "path": path})
 
     def add_hash_to_queue(self, path: str):
-        """Add a filename to the hash queue.
-
-        :param path: file path
-        """
         self.pending += 1
         self.queue.put({"task": "hash", "path": path})
 
-    def explore_path(self, path: str):
-        """Walks a path and adds files to hash queue.
+    # ------------------------------- crawl -------------------------------
 
-        :param path: search path
-        """
+    def explore_path(self, path: str):
         logger.debug("Exploring path %s", path)
         logger.debug("Using read buffer size: %s", self.buffer_size)
-        logger.debug("Using database: %s", config.DEFAULT_DB_PATH)
+        logger.debug("Using database (meta): %s", config.DEFAULT_DB_PATH)
         for filename in utils.walk(path, filetype="f", force=self.force):
             self.add_hash_to_queue(filename)
 
+    def _stat_keys(self, path: str, meta: dict) -> tuple[int, int, int]:
+        """Return (device, inode, mtime_ns). Uses metadata if present, otherwise os.stat."""
+        try:
+            device = int(meta.get("dev")) if meta.get("dev") is not None else None
+            inode = int(meta.get("ino")) if meta.get("ino") is not None else None
+            mtime_ns = meta.get("mtime_ns")
+            if mtime_ns is None and meta.get("mtime") is not None:
+                mtime_ns = int(round(float(meta["mtime"]) * 1_000_000_000))
+            if device is None or inode is None or mtime_ns is None:
+                st = os.stat(path, follow_symlinks=False)
+                device = st.st_dev if device is None else device
+                inode = st.st_ino if inode is None else inode
+                # Prefer ns if available (Py3.8+)
+                mtime_ns = getattr(
+                    st, "st_mtime_ns", int(round(st.st_mtime * 1_000_000_000))
+                )
+            return int(device), int(inode), int(mtime_ns)
+        except FileNotFoundError:
+            # File disappeared between list and stat
+            raise
+
     def do_hash(self, path: str):
-        """Hashes a file and puts the result in the result queue.
+        meta = get_metadata(path)
+        size = int(meta["size"]) if "size" in meta else os.path.getsize(path)
 
-        :param path: file path to hash
-        """
-        metadata = get_metadata(path)
-        mtime = metadata["mtime"]
-        size = metadata["size"]
-
-        # get the global cache instance
-        with self.lock:
-            cache = Cache()
-
-        # normalize the path for consistent output
+        # normalize for output
         normalized_path = normalize_path(path, start=self.start)
-
-        # skip if the normalized path is the same as the outfile
         if normalized_path == self.outfile:
             return
 
-        # update the current file in shared memory
+        # update shared "currently hashing" string
         self.update_current_file(path)
 
-        # check if the hash is cached
-        cached_hash = None
-        if cache and not self.force:
-            abs_path = os.path.abspath(path)
-            cached_hash = cache.get(abs_path, mtime, self.algo)
+        # natural keys
+        try:
+            device, inode, mtime_ns = self._stat_keys(path, meta)
+        except FileNotFoundError:
+            return
 
-        # if the hash is cached, use it; otherwise compute it
+        # skip-hash via cache lookup
+        cached_hash = None
+        if not self.force:
+            cache = self._get_cache()
+            try:
+                cached_hash = cache.get_hash(device, inode, mtime_ns, self.algo)
+            except Exception as e:
+                logger.debug("cache get_hash error: %s", e)
+                cached_hash = None
+
         if cached_hash and not self.force:
-            metadata[self.algo] = cached_hash
+            meta[self.algo] = cached_hash
             value = cached_hash
             extra = "(cached)"
-            do_write = False
+            do_write = False  # still record snapshot membership even if cached? We'll enqueue write for snapshot.
         else:
             extra = ""
             do_write = True
             try:
                 encoder = get_encoder(self.algo)
                 value = checksum_file(path, encoder, buffer_size=self.buffer_size)
-                metadata[self.algo] = value
+                meta[self.algo] = value
             except OSError as e:
                 logger.debug(str(e))
                 return
 
-        # print the result if verbose mode is enabled
         if self.verbose >= 2 or (self.verbose == 1 and not cached_hash):
             print(f"{value}  {normalized_path} {extra}")
 
-        # write the result to the output file if required
-        if do_write:
-            with self.lock:
-                abs_path = os.path.abspath(path)
-                self.queue.put(
-                    {
-                        "task": "write",
-                        "path": path,
-                        "normalized_path": normalized_path,
-                        "abs_path": abs_path,
-                        "metadata": metadata,
-                    }
-                )
-                self.pending -= 1
-
-        # periodically merge into the main cache
-        elif time.time() - self.last_execution_time >= self.merge_interval:
-            self.merge()
-            self.last_execution_time = time.time()
+        # Always enqueue a write so we upsert state and snapshot membership (hash may be cached)
+        self.queue.put(
+            {
+                "task": "write",
+                "path": path,
+                "normalized_path": normalized_path,
+                "metadata": meta,
+                "device": device,
+                "inode": inode,
+                "mtime_ns": mtime_ns,
+                "size": size,
+            }
+        )
+        self.pending -= 1
 
         with self.progress.get_lock():
             self.progress.value += 1
-
         with self.bytes_hashed.get_lock():
             self.bytes_hashed.value += size
 
     def write(self, data: dict):
-        """Write hash result to this worker's temp cache."""
-        from hashio.encoder import ENCODER_MAP
-
-        if self.temp_cache is None:
-            pid = os.getpid()
-            with self.lock:
-                dbname = f"worker_{pid}_{uuid.uuid4().hex}.sql"
-                self.temp_db_path = os.path.join(config.TEMP_CACHE_DIR, dbname)
-                self.temp_cache = Cache(self.temp_db_path)
-                logger.debug("Adding worker cache to queue: %s", self.temp_db_path)
-                self.temp_db_queue.put(self.temp_db_path)
+        """Upsert file into sharded cache and record snapshot membership."""
+        cache = self._get_cache()
 
         npath = data.get("normalized_path")
-        abspath = data.get("abs_path")
-        meta = data.get("metadata")
+        meta = data.get("metadata") or {}
+        device = int(data["device"])  # required
+        inode = int(data["inode"])  # required
+        mtime_ns = int(data["mtime_ns"])  # required
+        size = int(data.get("size", 0))
 
-        if not npath or not abspath or not meta:
-            return
-
-        mtime = meta.get("mtime")
-        size = meta.get("size")
-        inode = meta.get("ino")
-
-        snapshot_id = None
-        if self.snapshot and self.temp_cache:
-            snapshot_id = self.temp_cache.replace_snapshot(self.snapshot, self.path)
-
-        snapshot_file_ids = []
-
+        # Upsert one or more algorithms present in metadata (usually just self.algo)
+        wrote = False
         for algo, hashval in meta.items():
             if algo not in ENCODER_MAP:
                 continue
+            cache.upsert_file(
+                device=device,
+                inode=inode,
+                path=npath,  # store normalized for consistency
+                size=size,
+                mtime_ns=mtime_ns,
+                algo=algo,
+                hashval=hashval,
+            )
+            wrote = True
 
-            if not self.temp_cache.has(abspath, mtime, algo, hashval):
-                file_id = self.temp_cache.put_file_and_get_id(
-                    abspath, mtime, algo, hashval, size, inode
-                )
-            else:
-                file_id = self.temp_cache.get_file_id(abspath, mtime, algo)
+        # Snapshot membership (only if snapshot was created)
+        if self.snapshot_id is not None:
+            cache.add_to_snapshot(
+                self.snapshot_id, device, inode, npath, size, mtime_ns
+            )
 
-            if snapshot_id and file_id:
-                snapshot_file_ids.append(file_id)
+        # Periodic commit of shard DBs to keep WAL segments bounded
+        now = time.time()
+        if now - self.last_commit_time >= self.merge_interval:
+            try:
+                cache.commit()
+            finally:
+                self.last_commit_time = now
 
-        if snapshot_id and snapshot_file_ids:
-            self.temp_cache.batch_add_snapshot_links(snapshot_id, snapshot_file_ids)
-
-        with self.lock:
-            self.temp_cache.commit()
+    # ------------------------------- process ------------------------------
 
     def update_current_file(self, path: str):
-        """Updates the current file in shared memory."""
         encoded = path.encode("utf-8")[: CURRENT_FILE_BUFFER_SIZE - 1]
         with self.current_file.get_lock():
             self.current_file[: len(encoded)] = encoded
             self.current_file[len(encoded) :] = b"\x00" * (
                 CURRENT_FILE_BUFFER_SIZE - len(encoded)
-            )  # null-pad
+            )
 
     def merge(self):
-        """Merges temporary caches into the main cache."""
-        # final commit and close on temp dbs
-        if self.temp_cache:
-            with self.lock:
-                self.temp_cache.commit()
-
-        # merge the temporary caches into the main cache
-        with self.lock:
-            main_cache = Cache()
-
-        merged_paths = set()
-
-        while not self.temp_db_queue.empty():
-            try:
-                db_path = self.temp_db_queue.get_nowait()
-                if db_path in merged_paths:
-                    continue  # avoid merging same file twice
-                with self.lock:
-                    logger.debug("Merging %s into main cache", db_path)
-                    main_cache.merge(db_path)
-                    merged_paths.add(db_path)
-                    os.remove(db_path)
-            except queue.Empty:
-                break
-
-        if self.temp_cache:
-            self.temp_cache = None
+        """Historical no-op. Keep for API compatibility: just commit."""
+        try:
+            if self._cache is not None:
+                self._cache.commit()
+        except Exception:
+            pass
 
     def run(self):
         """Runs the worker."""
         self.start_time = time.time()
+
+        # Prepare snapshot once (so children can reference its id)
+        if self.snapshot:
+            cache = Cache()
+            # Replace to ensure a clean membership set for this run
+            self.snapshot_id = cache.replace_snapshot(self.snapshot, self.path)
+            cache.commit()
+
+        # start worker pool **after** snapshot id exists
+        self.pool = Pool(self.procs, HashWorker.main, (self,))
+
+        # seed initial path
         self.add_path_to_queue(self.path)
 
         try:
@@ -355,23 +356,20 @@ class HashWorker:
             self.done.set()
 
     def stop(self):
-        """Stops the worker and cleans up resources."""
         if self.pool:
             self.pool.terminate()
             self.pool.join()
         self.total_time = time.time() - self.start_time
         self.done.set()
         if not self.verbose:
-            logger.info("Merging results to central cache...")
+            logger.info("Committing results to cache...")
         self.merge()
         logger.debug("Stopping %s", multiprocessing.current_process())
 
     def progress_count(self):
-        """Returns the current progress count."""
         return self.progress.value
 
     def progress_bytes(self):
-        """Returns the total bytes hashed so far."""
         return self.bytes_hashed.value
 
     def progress_filename(self) -> str:
@@ -380,7 +378,6 @@ class HashWorker:
             return raw.split(b"\x00", 1)[0].decode("utf-8", errors="replace")
 
     def is_done(self):
-        """Checks if the worker has completed its tasks."""
         return self.done.is_set()
 
     @staticmethod
@@ -403,14 +400,12 @@ class HashWorker:
             except queue.Empty:
                 break
             except (KeyboardInterrupt, EOFError):
-                break  # clean exit
+                break
             except Exception as err:
                 logger.error(err)
 
 
 def run_profiled(path: str):
-    """Runs the HashWorker with profiling enabled."""
-
     import cProfile
     import pstats
 
@@ -422,7 +417,7 @@ def run_profiled(path: str):
 
     profiler.disable()
     stats = pstats.Stats(profiler).sort_stats("cumtime")
-    stats.print_stats(20)  # top 20 cumulative time consumers
+    stats.print_stats(20)
 
 
 if __name__ == "__main__":
