@@ -391,4 +391,4 @@ def get_exporter_class(ext: str):
     for cls in all_exporter_classes(BaseExporter):
         if cls.ext == ext:
             return cls
-    return BaseExporter
+    return None
