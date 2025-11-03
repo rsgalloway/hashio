@@ -44,7 +44,7 @@ from datetime import datetime
 
 from hashio import __version__, config, utils
 from hashio.cache import Cache
-from hashio.encoder import verify_caches, verify_checksums
+from hashio.encoder import get_encoder_class, verify_caches, verify_checksums
 from hashio.worker import HashWorker
 
 
@@ -369,6 +369,11 @@ def main():
 
     args_dict = vars(args).copy()
     paths = list(dict.fromkeys(args_dict.pop("path")))
+
+    # validate algorithm
+    if not get_encoder_class(args_dict["algo"]):
+        print(f"Unsupported algorithm: {args_dict['algo']}")
+        return 2
 
     progress_threads = []
     worker_threads = []
