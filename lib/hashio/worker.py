@@ -251,6 +251,9 @@ class HashWorker:
         with self.bytes_hashed.get_lock():
             self.bytes_hashed.value += size
 
+        if self.exporter:
+            self.exporter.write(normalized_path, metadata)
+
     def write(self, data: dict):
         """Write hash result to this worker's temp cache."""
         from hashio.encoder import ENCODER_MAP
@@ -353,6 +356,8 @@ class HashWorker:
             self.queue.join_thread()
             self.total_time = time.time() - self.start_time
             self.done.set()
+            if self.exporter:
+                self.exporter.close()
 
     def stop(self):
         """Stops the worker and cleans up resources."""

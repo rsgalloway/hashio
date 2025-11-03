@@ -131,6 +131,7 @@ class JSONExporter(BaseExporter):
         with open(self.filepath, "a+") as f:
             try:
                 f.write('    "{0}": {1},\n'.format(path, json.dumps(data, indent=8)))
+                f.flush()
             except Exception as err:
                 logger.warning("write error: %s", err)
 
@@ -299,6 +300,7 @@ class MHLExporter(BaseExporter):
         # write json serialized data to output file
         with open(self.filepath, "a+") as f:
             f.write((etree.tostring(root, pretty_print=True).decode("utf-8")))
+            f.flush()
 
 
 class TXTExporter(BaseExporter):
@@ -359,6 +361,7 @@ class TXTExporter(BaseExporter):
 
         value = data.get(self.algo, "")
         self.fp.write(f"{value} {path}\n")
+        self.fp.flush()
 
 
 def all_exporter_classes(cls: BaseExporter):
