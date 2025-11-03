@@ -102,8 +102,7 @@ def get_buffer_size(path: str = os.getcwd(), default: int = config.BUF_SIZE):
 
 
 def get_metadata(path: str):
-    """Returns dict of file metadata: atime, ctime, mtime, ino, dev, size,
-    Note: disk usage for directories not accurate.
+    """Returns dict of file metadata for the given path.
 
     :param path: file system path
     :returns: dict with file metadata
@@ -112,11 +111,13 @@ def get_metadata(path: str):
     path_type = "file" if os.path.isfile(path) else "dir"
     return {
         "name": os.path.basename(path),
+        "dirname": os.path.dirname(path),
         "atime": stats.st_atime,
         "ctime": stats.st_ctime,
         "mtime": stats.st_mtime,
         "ino": stats.st_ino,
         "dev": stats.st_dev,
+        "nlink": stats.st_nlink,
         "size": stats.st_size,
         "type": path_type,
     }
