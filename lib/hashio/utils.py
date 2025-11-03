@@ -48,8 +48,8 @@ ALL_IGNORABLE = re.compile(
 def format_bytes(n: int):
     """Formats a number of bytes into a human-readable string.
 
-    :param n: number of bytes
-    :returns: formatted string with appropriate unit (B, KB, MB, GB, TB, PB)
+    :param n: number of bytes.
+    :returns: formatted string with appropriate unit (B, KB, MB, GB, TB, PB).
     """
     for unit in ["B", "KB", "MB", "GB", "TB"]:
         if n < 1024:
@@ -61,9 +61,10 @@ def format_bytes(n: int):
 def get_block_size(path: str = os.getcwd(), default: int = 4096):
     """Returns the block size of the file system where the path is located.
 
-    :param path: file system path, defaults to current working directory
-    :param default: default block size in bytes if not available, defaults to 4096
-    :returns: block size in bytes, defaults to 4096 if not available
+    :param path: file system path, defaults to current working directory.
+    :param default: default block size in bytes if not available, defaults to
+        4096.
+    :returns: block size in bytes, defaults to 4096 if not available.
     """
     try:
         if platform.system() == "Windows":
@@ -80,9 +81,10 @@ def get_buffer_size(path: str = os.getcwd(), default: int = config.BUF_SIZE):
     """Determine optimal buffer size for minimizing IOPS during sequential reads.
     If the block size is greater than 128 KiB, use it as the buffer size.
 
-    :param path: file system path, defaults to current working directory
-    :param default: default buffer size in bytes, defaults to config.BUF_SIZE
-    :returns: buffer size in bytes, defaults to config.BUF_SIZE if not available
+    :param path: file system path, defaults to current working directory.
+    :param default: default buffer size in bytes, defaults to config.BUF_SIZE.
+    :returns: buffer size in bytes, defaults to config.BUF_SIZE if not
+        available.
     """
     try:
         if default > 0:
@@ -147,17 +149,19 @@ def is_subpath(filepath: str, directory: str):
 
 
 def normalize_path(path: str, start: str = None):
-    """
-    Returns a normalized path:
+    """Returns a normalized path:
 
     - If 'path' is relative, returns it normalized.
-    - If 'path' is absolute and starts with 'start', returns the relative path from 'start'.
+    - If 'path' is absolute and starts with 'start', returns the relative path
+      from 'start'.
     - Otherwise, returns the absolute normalized path.
 
-    Resolves symbolic links to avoid mismatches between real and symlinked paths.
+    Resolves symbolic links to avoid mismatches between real and symlinked
+    paths.
 
     :param path: file system path
-    :param start: base path for relative resolution, defaults to current directory
+    :param start: base path for relative resolution, defaults to current
+        directory
     :returns: normalized path using forward slashes
     """
     if start is None:
