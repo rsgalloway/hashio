@@ -1,4 +1,4 @@
-envstack==0.8.9
+envstack==0.9.2
 lxml==5.3.0
 tqdm==4.67.1
 xxhash==3.5.0

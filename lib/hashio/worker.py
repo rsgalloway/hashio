@@ -269,6 +269,9 @@ class HashWorker:
         with self.bytes_hashed.get_lock():
             self.bytes_hashed.value += size
 
+        if self.exporter:
+            self.exporter.write(normalized_path, metadata)
+
     def write(self, data: dict):
         """Upsert file into sharded cache and record snapshot membership."""
         cache = self._get_cache()
@@ -354,6 +357,8 @@ class HashWorker:
             self.queue.join_thread()
             self.total_time = time.time() - self.start_time
             self.done.set()
+            if self.exporter:
+                self.exporter.close()
 
     def stop(self):
         if self.pool:
