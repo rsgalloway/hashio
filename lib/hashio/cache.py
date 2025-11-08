@@ -140,7 +140,7 @@ class Cache:
 
         :param db_path: The path to the SQLite database file.
         """
-        self.db_path = db_path
+        self.db_path = os.path.abspath(db_path)
         self.conn = None
         self.lru = LRU()
         self._ensure_db()
