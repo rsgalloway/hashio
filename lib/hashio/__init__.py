@@ -35,4 +35,4 @@ Custom file and directory checksum tool.
 
 __author__ = "ryan@rsgalloway.com"
 __prog__ = "hashio"
-__version__ = "0.4.8"
+__version__ = "0.4.9"
