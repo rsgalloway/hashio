@@ -33,14 +33,9 @@ __doc__ = """
 Contains default hashio configs and settings.
 """
 
-import envstack
 import logging
 import os
 import platform
-
-from envstack.util import safe_eval
-
-envstack.init("hashio")
 
 
 # default output filename
@@ -108,10 +103,10 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", logging.INFO)
 
 # set the read buffer size for file reads. change this value to optimize performance
 # or limit memory usage. default is 1MB.
-BUF_SIZE = safe_eval(os.getenv("BUF_SIZE", 1024 * 1024))
+BUF_SIZE = int(os.getenv("BUF_SIZE", 1024 * 1024))
 
 # maximum number of search and hash processes to spawn
-MAX_PROCS = safe_eval(os.getenv("MAX_PROCS", 1))
+MAX_PROCS = int(os.getenv("MAX_PROCS", 1))
 
 # default merge interval in seconds
-MERGE_INTERVAL = safe_eval(os.getenv("MERGE_INTERVAL", 5))
+MERGE_INTERVAL = int(os.getenv("MERGE_INTERVAL", 5))
