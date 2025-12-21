@@ -50,10 +50,10 @@ def safe_eval(key: str, default: int):
         int: The value of the environment variable as an integer, or the default value.
     """
     try:
-        buf_size = int(os.getenv(key, default))
-        if buf_size <= 0:
+        value = int(os.getenv(key, default))
+        if value <= 0:
             raise ValueError(f"{key} must be a positive value")
-        return buf_size
+        return value
     except (ValueError, TypeError) as e:
         logging.warning(f"Invalid {key} value. Using default: {default}. Error: {e}")
         return default
