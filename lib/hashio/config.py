@@ -44,10 +44,10 @@ def safe_eval(key: str, default: int):
 
     Args:
         key (str): The environment variable key to look up.
-        default (int): The default buffer size to use if BUF_SIZE is invalid.
+        default (int): The default buffer size to use if key is invalid.
 
     Returns:
-        int: The buffer size to use.
+        int: The value of the environment variable as an integer, or the default value.
     """
     try:
         buf_size = int(os.getenv(key, default))
