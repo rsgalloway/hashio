@@ -38,6 +38,27 @@ import os
 import platform
 
 
+def safe_eval(key: str, default: int):
+    """
+    Safely evaluates an environment variable as an integer.
+
+    Args:
+        key (str): The environment variable key to look up.
+        default (int): The default buffer size to use if BUF_SIZE is invalid.
+
+    Returns:
+        int: The buffer size to use.
+    """
+    try:
+        buf_size = int(os.getenv(key, default))
+        if buf_size <= 0:
+            raise ValueError(f"{key} must be a positive value")
+        return buf_size
+    except (ValueError, TypeError) as e:
+        logging.warning(f"Invalid {key} value. Using default: {default}. Error: {e}")
+        return default
+
+
 # default output filename
 HOME = os.getenv("HOME", os.path.expanduser("~"))
 PLATFORM = platform.system().lower()
@@ -103,10 +124,10 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", logging.INFO)
 
 # set the read buffer size for file reads. change this value to optimize performance
 # or limit memory usage. default is 1MB.
-BUF_SIZE = int(os.getenv("BUF_SIZE", 1024 * 1024))
+BUF_SIZE = safe_eval("BUF_SIZE", 1024 * 1024)
 
 # maximum number of search and hash processes to spawn
-MAX_PROCS = int(os.getenv("MAX_PROCS", 1))
+MAX_PROCS = safe_eval("MAX_PROCS", 1)
 
 # default merge interval in seconds
-MERGE_INTERVAL = int(os.getenv("MERGE_INTERVAL", 5))
+MERGE_INTERVAL = safe_eval("MERGE_INTERVAL", 5)
