@@ -88,8 +88,9 @@ def with_retry(retries: int = 5, delay: float = 0.2, backoff: float = 1.25):
                     else:
                         logger.warning("sqlite3.OperationalError: %s", str(e))
                         raise
+            db_path = getattr(args[0], "db_path", "<unknown>")
             raise RuntimeError(
-                f"{fn.__name__} failed after {retries} retries with error: {last_err} ({args[0].db_path})"
+                f"{fn.__name__} failed after {retries} retries with error: {last_err} ({db_path})"
             )
 
         return wrapper
