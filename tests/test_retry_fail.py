@@ -54,6 +54,7 @@ def test_hashworker_retries_on_locked_cache(monkeypatch, tmp_path):
         # still exercises the failure path.
         time.sleep(8.0)
         conn.commit()
+        conn.close()
 
     # start lock-holder thread
     locker = threading.Thread(target=hold_lock)

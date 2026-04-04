@@ -156,7 +156,7 @@ class HashWorker:
         self.current_file = multiprocessing.Array(
             ctypes.c_char, CURRENT_FILE_BUFFER_SIZE
         )
-        self.start = start or os.path.relpath(path)
+        self.start = start or os.getcwd()
         self.exporter = get_exporter(outfile)
         self.queue = Queue()  # task queue
         self.pool = Pool(self.procs, HashWorker.main, (self,))

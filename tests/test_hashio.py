@@ -94,7 +94,7 @@ class TestUtils(unittest.TestCase):
         # rel path where start is cwd (the default)
         p = os.path.relpath(__file__)
         n = normalize_path(p)
-        self.assertEqual(n, p)
+        self.assertEqual(n, p.replace("\\", "/"))
 
     def test_paths_are_equal(self):
         from hashio.utils import paths_are_equal
@@ -165,25 +165,25 @@ class TestDedupe(unittest.TestCase):
         self.assertEqual(len(os.listdir(s1)), 4)
 
         # find all the dupes
-        dupes = dedupe_paths([f1, f2])
+        dupes = dedupe_paths([f1, f2], algo="md5")
         self.assertEqual(len(dupes), 0)
 
-        dupes = dedupe_paths([f1, f5])
+        dupes = dedupe_paths([f1, f5], algo="md5")
         self.assertEqual(len(dupes), 0)
 
-        dupes = dedupe_paths([f1, f3])
+        dupes = dedupe_paths([f1, f3], algo="md5")
         self.assertEqual(len(dupes), 1)
 
-        dupes = dedupe_paths([f1, f2, f3])
+        dupes = dedupe_paths([f1, f2, f3], algo="md5")
         self.assertEqual(len(dupes), 1)
 
-        dupes = dedupe_paths([f1, f2, f3, f4])
+        dupes = dedupe_paths([f1, f2, f3, f4], algo="md5")
         self.assertEqual(len(dupes), 1)
 
-        dupes = dedupe_paths([f1, f2, f3, f4, f5])
+        dupes = dedupe_paths([f1, f2, f3, f4, f5], algo="md5")
         self.assertEqual(len(dupes), 2)
 
-        dupes = dedupe_paths([f1, f2, f3, f4, f5])
+        dupes = dedupe_paths([f1, f2, f3, f4, f5], algo="md5")
         all_files = set(flatten(dupes))
         self.assertEqual(len(all_files), 5)
 
@@ -193,7 +193,7 @@ class TestDedupe(unittest.TestCase):
         write_to_file(f3, "c")
         write_to_file(f4, "d")
         write_to_file(f5, "e")
-        dupes = dedupe_paths([f1, f2, f3, f4, f5])
+        dupes = dedupe_paths([f1, f2, f3, f4, f5], algo="md5")
         self.assertEqual(len(dupes), 0)
 
     def test_dedupe_dirs(self):
@@ -228,11 +228,11 @@ class TestDedupe(unittest.TestCase):
         self.assertEqual(len(os.listdir(t1)), 4)
 
         # find dupes between t1 and s1
-        dupes = dedupe_paths([t1, s1])
+        dupes = dedupe_paths([t1, s1], algo="md5")
         self.assertEqual(len(dupes), 3)
 
         # change order of inputs
-        dupes = dedupe_paths([s1, t1])
+        dupes = dedupe_paths([s1, t1], algo="md5")
         self.assertEqual(len(dupes), 3)
 
         # test all files in set of dupes
@@ -240,49 +240,49 @@ class TestDedupe(unittest.TestCase):
         self.assertEqual(len(all_files), 6)
 
         # make ine input invalid
-        dupes = dedupe_paths([s1, None])
+        dupes = dedupe_paths([s1, None], algo="md5")
         self.assertEqual(len(dupes), 0)
 
         # make ine input missing
-        dupes = dedupe_paths([t1, "/this/dir/is/missing"])
+        dupes = dedupe_paths([t1, "/this/dir/is/missing"], algo="md5")
         self.assertEqual(len(dupes), 0)
 
         # target dir is empty, no dupes
-        self.assertEqual(len(dedupe_paths([t2, s1])), 0)
+        self.assertEqual(len(dedupe_paths([t2, s1], algo="md5")), 0)
 
         # one dupe
         write_to_file(os.path.join(t2, "d.txt"), "foo")
-        self.assertEqual(len(dedupe_paths([t2, s1])), 1)
+        self.assertEqual(len(dedupe_paths([t2, s1], algo="md5")), 1)
 
         # two dupes
         write_to_file(os.path.join(t2, "e.txt"), "bar")
-        self.assertEqual(len(dedupe_paths([t2, s1])), 2)
+        self.assertEqual(len(dedupe_paths([t2, s1], algo="md5")), 2)
 
         # third dupe in subdir
         t2a = os.path.join(t2, "nested")
         os.makedirs(t2a)
         write_to_file(os.path.join(t2a, "c.txt"), "baz")
-        self.assertEqual(len(dedupe_paths([t2, s1])), 3)
+        self.assertEqual(len(dedupe_paths([t2, s1], algo="md5")), 3)
 
         # new file in target not in source
         write_to_file(os.path.join(t2, "g.txt"), "qux")
-        self.assertEqual(len(dedupe_paths([t2, s1])), 3)
+        self.assertEqual(len(dedupe_paths([t2, s1], algo="md5")), 3)
 
         # test three dirs
         write_to_file(os.path.join(t2, "g.txt"), "qux")
-        self.assertEqual(len(dedupe_paths([t2, t1, s1])), 4)
+        self.assertEqual(len(dedupe_paths([t2, t1, s1], algo="md5")), 4)
 
         # update one of the target files
         write_to_file(os.path.join(t2, "d.txt"), "quuz")
-        self.assertEqual(len(dedupe_paths([t2, s1])), 2)
+        self.assertEqual(len(dedupe_paths([t2, s1], algo="md5")), 2)
 
         # update another of the target files
         write_to_file(os.path.join(t2, "e.txt"), "corge")
-        self.assertEqual(len(dedupe_paths([t2, s1])), 1)
+        self.assertEqual(len(dedupe_paths([t2, s1], algo="md5")), 1)
 
         # change it back
         write_to_file(os.path.join(t2, "e.txt"), "bar")
-        self.assertEqual(len(dedupe_paths([t2, s1])), 2)
+        self.assertEqual(len(dedupe_paths([t2, s1], algo="md5")), 2)
 
 
 class TestEncoders(unittest.TestCase):

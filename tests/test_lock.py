@@ -71,6 +71,7 @@ def test_retry_on_real_db_lock():
 
         writer = FakeWriter()
         writer.write()
+        writer.conn.close()
         t.join()
 
         # check results
