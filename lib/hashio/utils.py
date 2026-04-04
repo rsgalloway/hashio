@@ -33,6 +33,7 @@ Contains helper classes and functions.
 """
 
 import fnmatch
+import gzip
 import os
 import platform
 import re
@@ -201,6 +202,28 @@ def read_file(filepath: str, buffer_size: int = config.BUF_SIZE):
     :returns: file data in chunks
     """
     with open(filepath, "rb") as f:
+        while True:
+            data = f.read(buffer_size)
+            if not data:
+                break
+            yield data
+
+
+def is_gzip_path(filepath: str):
+    """Returns True if filepath should be treated as a gzip archive."""
+    return filepath.lower().endswith(".gz")
+
+
+def get_uncompressed_path(filepath: str):
+    """Returns the logical output path for a compressed file."""
+    if is_gzip_path(filepath):
+        return filepath[:-3]
+    return filepath
+
+
+def read_file_uncompressed(filepath: str, buffer_size: int = config.BUF_SIZE):
+    """File reader that yields decompressed chunks for gzip files."""
+    with gzip.open(filepath, "rb") as f:
         while True:
             data = f.read(buffer_size)
             if not data:

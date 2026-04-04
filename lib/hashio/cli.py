@@ -162,6 +162,11 @@ def parse_args():
         nargs="*",
         help="verify checksums from a previously created hash file",
     )
+    parser.add_argument(
+        "--uncompress",
+        action="store_true",
+        help="hash and verify the decompressed contents of .gz files",
+    )
 
     # mutually exclusive group for cache operations
     cache_group = parser.add_argument_group("cache")
@@ -351,11 +356,13 @@ def main():
                 print(f"file not found: {config.CACHE_FILENAME}")
                 return 0
             for algo, value, miss in verify_checksums(
-                config.CACHE_FILENAME, start=args.start
+                config.CACHE_FILENAME, start=args.start, uncompress=args.uncompress
             ):
                 print("{0} {1}".format(algo, miss))
         elif len(args.verify) == 1:
-            for algo, value, miss in verify_checksums(args.verify[0], start=args.start):
+            for algo, value, miss in verify_checksums(
+                args.verify[0], start=args.start, uncompress=args.uncompress
+            ):
                 print("{0} {1}".format(algo, miss))
         elif len(args.verify) == 2:
             source = args.verify[0]
@@ -392,6 +399,7 @@ def main():
                 snapshot=args_dict["snapshot"],
                 force=args_dict["force"],
                 verbose=verbose,
+                uncompress=args_dict["uncompress"],
             )
             workers.append(worker)
 

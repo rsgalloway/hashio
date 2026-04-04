@@ -304,22 +304,30 @@ class Cache:
 
         :param path: The path to the other SQLite database file.
         """
-        self.conn.execute("ATTACH DATABASE ? AS tempdb", (path,))
-        # do not insert IDs
-        self.conn.executescript(
+        attached = False
+        try:
+            self.conn.execute("ATTACH DATABASE ? AS tempdb", (path,))
+            attached = True
+            # do not insert IDs
+            self.conn.executescript(
+                """
+                INSERT OR IGNORE INTO files (path, mtime, algo, hash, size, inode)
+                SELECT path, mtime, algo, hash, size, inode FROM tempdb.files;
+
+                INSERT OR IGNORE INTO snapshots (name, created_at, path)
+                SELECT name, created_at, path FROM tempdb.snapshots;
+
+                INSERT OR IGNORE INTO snapshot_files (snapshot_id, file_id)
+                SELECT snapshot_id, file_id FROM tempdb.snapshot_files;
             """
-            INSERT OR IGNORE INTO files (path, mtime, algo, hash, size, inode)
-            SELECT path, mtime, algo, hash, size, inode FROM tempdb.files;
-
-            INSERT OR IGNORE INTO snapshots (name, created_at, path)
-            SELECT name, created_at, path FROM tempdb.snapshots;
-
-            INSERT OR IGNORE INTO snapshot_files (snapshot_id, file_id)
-            SELECT snapshot_id, file_id FROM tempdb.snapshot_files;
-        """
-        )
-        self.conn.commit()
-        self.conn.execute("DETACH DATABASE tempdb")
+            )
+            self.conn.commit()
+        finally:
+            if attached:
+                try:
+                    self.conn.execute("DETACH DATABASE tempdb")
+                except sqlite3.Error:
+                    pass
 
     def query(
         self, pattern: str, algo: Optional[str] = None, since: Optional[str] = None

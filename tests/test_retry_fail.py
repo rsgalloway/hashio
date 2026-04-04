@@ -50,7 +50,9 @@ def test_hashworker_retries_on_locked_cache(monkeypatch, tmp_path):
             "INSERT OR IGNORE INTO files (id, path, mtime, algo, hash, size, inode) "
             "VALUES (0, 'dummy', 0, 'sha256', '', 0, 'inode')"
         )
-        time.sleep(0.5)
+        # Hold the write lock longer than the merge retry window so this test
+        # still exercises the failure path.
+        time.sleep(8.0)
         conn.commit()
 
     # start lock-holder thread

@@ -35,7 +35,7 @@ import sys
 from setuptools import find_packages, setup
 
 here = os.path.abspath(os.path.dirname(__file__))
-with open(os.path.join(here, "README.md")) as f:
+with open(os.path.join(here, "README.md"), encoding="utf-8") as f:
     long_description = f.read()
 
 try:

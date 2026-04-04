@@ -4,6 +4,8 @@ __doc__ = """
 Contains hashio unit tests.
 """
 
+import gzip
+import hashlib
 import os
 import shutil
 import tempfile
@@ -22,6 +24,12 @@ def write_to_file(filepath, data):
     fp = open(filepath, "w")
     fp.write(data)
     fp.close()
+
+
+def write_gzip_file(filepath, data):
+    """writes gzipped text data to a file."""
+    with gzip.open(filepath, "wb") as fp:
+        fp.write(data.encode("utf-8"))
 
 
 class TestUtils(unittest.TestCase):
@@ -110,6 +118,12 @@ class TestUtils(unittest.TestCase):
         d2 = fp.read()
         fp.close()
         self.assertEqual(d1, d2)
+
+    def test_get_uncompressed_path(self):
+        from hashio.utils import get_uncompressed_path
+
+        self.assertEqual(get_uncompressed_path("sample.txt.gz"), "sample.txt")
+        self.assertEqual(get_uncompressed_path("sample.txt"), "sample.txt")
 
 
 class TestDedupe(unittest.TestCase):
@@ -313,7 +327,6 @@ class TestEncoders(unittest.TestCase):
         self.assertEqual(h_hex, checksum_file(__file__, encoder))
 
     def test_md5_encoder(self):
-        import hashlib
         from hashio.encoder import MD5Encoder
         from hashio.encoder import checksum_file
 
@@ -340,6 +353,22 @@ class TestEncoders(unittest.TestCase):
 
         # confirm rehashing results in same hash
         self.assertEqual(h.hexdigest(), checksum_file(__file__, encoder))
+
+    def test_md5_encoder_uncompress_gzip(self):
+        from hashio.encoder import MD5Encoder
+        from hashio.encoder import checksum_file
+
+        tempdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tempdir)
+
+        filepath = os.path.join(tempdir, "payload.txt.gz")
+        payload = "some gzipped payload"
+        write_gzip_file(filepath, payload)
+
+        expected = hashlib.md5(payload.encode("utf-8")).hexdigest()
+        encoder = MD5Encoder()
+
+        self.assertEqual(expected, checksum_file(filepath, encoder, uncompress=True))
 
     def test_xxh64_encoder(self):
         import xxhash
@@ -486,6 +515,85 @@ class TestCompositeHash(unittest.TestCase):
         # verify the composite hash for an empty list
         self.assertIsNotNone(composite)
         self.assertEqual(composite, checksum_text("", encoder))
+
+
+class TestUncompress(unittest.TestCase):
+    """Tests gzip uncompress support."""
+
+    tempdir = None
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tempdir = tempfile.mkdtemp()
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tempdir)
+
+    def test_worker_output_helpers_uncompress_gzip(self):
+        from hashio.worker import get_output_path, update_output_metadata
+
+        source_dir = os.path.join(self.tempdir, "worker")
+        os.makedirs(source_dir, exist_ok=True)
+
+        gzip_path = os.path.join(source_dir, "sample.txt.gz")
+        metadata = {
+            "name": "sample.txt.gz",
+            "size": 999,
+        }
+        payload_size = len(b"hello from gzip worker")
+
+        self.assertEqual(
+            get_output_path(gzip_path, start=source_dir, uncompress=True),
+            "sample.txt",
+        )
+
+        adjusted = update_output_metadata(
+            metadata, gzip_path, payload_size, uncompress=True
+        )
+        self.assertEqual(adjusted["name"], "sample.txt")
+        self.assertEqual(adjusted["size"], payload_size)
+
+    def test_verify_checksums_uses_gzip_fallback(self):
+        from hashio.encoder import verify_checksums
+        from hashio.exporter import JSONExporter
+
+        source_dir = os.path.join(self.tempdir, "verify")
+        os.makedirs(source_dir, exist_ok=True)
+
+        manifest_path = os.path.join(source_dir, "hash.json")
+        gzip_path = os.path.join(source_dir, "sample.txt.gz")
+        manifest_name = "sample.txt"
+        payload = "initial gzip payload"
+        payload_hash = hashlib.md5(payload.encode("utf-8")).hexdigest()
+
+        write_gzip_file(gzip_path, payload)
+
+        exporter = JSONExporter(manifest_path)
+        exporter.write(
+            manifest_name,
+            {
+                "name": manifest_name,
+                "mtime": 0,
+                "size": len(payload.encode("utf-8")),
+                "md5": payload_hash,
+            },
+        )
+        exporter.close()
+
+        self.assertEqual(
+            [],
+            list(verify_checksums(manifest_path, start=source_dir, uncompress=True)),
+        )
+
+        write_gzip_file(gzip_path, "changed gzip payload")
+
+        misses = list(
+            verify_checksums(manifest_path, start=source_dir, uncompress=True)
+        )
+        self.assertEqual(len(misses), 1)
+        self.assertEqual(misses[0][0], "md5")
+        self.assertEqual(misses[0][2], os.path.join(source_dir, manifest_name))
 
 
 if __name__ == "__main__":
