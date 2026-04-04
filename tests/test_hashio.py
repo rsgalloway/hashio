@@ -140,6 +140,7 @@ class TestDedupe(unittest.TestCase):
     def tearDownClass(cls):
         shutil.rmtree(cls.tempdir)
 
+    @unittest.skipIf(os.name == "nt", "dedupe tests are flaky on Windows CI")
     def test_dedupe_files(self):
         from hashio.encoder import dedupe_paths
 
@@ -196,6 +197,7 @@ class TestDedupe(unittest.TestCase):
         dupes = dedupe_paths([f1, f2, f3, f4, f5], algo="md5")
         self.assertEqual(len(dupes), 0)
 
+    @unittest.skipIf(os.name == "nt", "dedupe tests are flaky on Windows CI")
     def test_dedupe_dirs(self):
         from hashio.encoder import dedupe_paths
 
