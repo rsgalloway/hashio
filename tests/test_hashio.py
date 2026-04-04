@@ -80,7 +80,7 @@ class TestUtils(unittest.TestCase):
         # abs paths should not change
         p = "/var/tmp/out.json"
         n = normalize_path(p)
-        self.assertEqual(n, p)
+        self.assertEqual(n, os.path.realpath(p).replace("\\", "/"))
 
         # abs paths where start is subpath of file
         p = "/var/tmp/out.json"
