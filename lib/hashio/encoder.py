@@ -37,7 +37,7 @@ import hashlib
 import os
 import xxhash
 import zlib
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 from hashio import config
 from hashio.exporter import CacheExporter
@@ -327,7 +327,7 @@ def checksum_file(
     buffer_size: int = config.BUF_SIZE,
     uncompress: bool = False,
     with_size: bool = False,
-):
+) -> Union[str, Tuple[str, int]]:
     """Creates a checksum for a given filepath and encoder. Note: resets
     encoder, existing data will be lost.
 
@@ -335,7 +335,10 @@ def checksum_file(
 
     :param path: the path to the filepath being hashed
     :param encoder: instance of Encoder subclass
-    :return: hexdigest of the checksum
+    :param buffer_size: size of each read chunk in bytes
+    :param uncompress: if True, hash decompressed contents for supported files
+    :param with_size: if True, also return the total bytes hashed
+    :return: checksum hex digest, or ``(checksum, size)`` when ``with_size`` is True
     """
     encoder.reset()
     size = 0

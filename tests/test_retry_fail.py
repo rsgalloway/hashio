@@ -34,11 +34,16 @@ def reset_hashio_env(tmp_path):
 def test_hashworker_retries_on_locked_cache(monkeypatch, tmp_path):
     """Test that HashWorker retries when the cache is locked by another process."""
 
-    from hashio.cache import Cache
+    from hashio.cache import Cache, with_retry
     from hashio.worker import HashWorker
 
     file_path = tmp_path / "test.txt"
     file_path.write_text("hello world")
+
+    short_retry_merge = with_retry(retries=2, delay=0.05, backoff=1.0)(
+        Cache.merge.__wrapped__
+    )
+    monkeypatch.setattr(Cache, "merge", short_retry_merge)
 
     cache = Cache()
 
@@ -50,9 +55,9 @@ def test_hashworker_retries_on_locked_cache(monkeypatch, tmp_path):
             "INSERT OR IGNORE INTO files (id, path, mtime, algo, hash, size, inode) "
             "VALUES (0, 'dummy', 0, 'sha256', '', 0, 'inode')"
         )
-        # Hold the write lock longer than the merge retry window so this test
-        # still exercises the failure path.
-        time.sleep(8.0)
+        # Hold the write lock longer than the patched merge retry window so this
+        # test still exercises the failure path without sleeping for several seconds.
+        time.sleep(0.5)
         conn.commit()
         conn.close()
 
