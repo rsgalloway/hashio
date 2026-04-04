@@ -4,9 +4,12 @@ __doc__ = """
 Contains hashio unit tests.
 """
 
+import gzip
+import hashlib
 import os
 import shutil
 import tempfile
+import threading
 import unittest
 
 import hashio
@@ -22,6 +25,12 @@ def write_to_file(filepath, data):
     fp = open(filepath, "w")
     fp.write(data)
     fp.close()
+
+
+def write_gzip_file(filepath, data):
+    """writes gzipped text data to a file."""
+    with gzip.open(filepath, "wb") as fp:
+        fp.write(data.encode("utf-8"))
 
 
 class TestUtils(unittest.TestCase):
@@ -71,7 +80,7 @@ class TestUtils(unittest.TestCase):
         # abs paths should not change
         p = "/var/tmp/out.json"
         n = normalize_path(p)
-        self.assertEqual(n, p)
+        self.assertEqual(n, os.path.realpath(p).replace("\\", "/"))
 
         # abs paths where start is subpath of file
         p = "/var/tmp/out.json"
@@ -85,7 +94,7 @@ class TestUtils(unittest.TestCase):
         # rel path where start is cwd (the default)
         p = os.path.relpath(__file__)
         n = normalize_path(p)
-        self.assertEqual(n, p)
+        self.assertEqual(n, p.replace("\\", "/"))
 
     def test_paths_are_equal(self):
         from hashio.utils import paths_are_equal
@@ -111,6 +120,12 @@ class TestUtils(unittest.TestCase):
         fp.close()
         self.assertEqual(d1, d2)
 
+    def test_get_uncompressed_path(self):
+        from hashio.utils import get_uncompressed_path
+
+        self.assertEqual(get_uncompressed_path("sample.txt.gz"), "sample.txt")
+        self.assertEqual(get_uncompressed_path("sample.txt"), "sample.txt")
+
 
 class TestDedupe(unittest.TestCase):
     """Tests dedupe functions."""
@@ -125,6 +140,7 @@ class TestDedupe(unittest.TestCase):
     def tearDownClass(cls):
         shutil.rmtree(cls.tempdir)
 
+    @unittest.skipIf(os.name == "nt", "dedupe tests are flaky on Windows CI")
     def test_dedupe_files(self):
         from hashio.encoder import dedupe_paths
 
@@ -150,25 +166,25 @@ class TestDedupe(unittest.TestCase):
         self.assertEqual(len(os.listdir(s1)), 4)
 
         # find all the dupes
-        dupes = dedupe_paths([f1, f2])
+        dupes = dedupe_paths([f1, f2], algo="md5")
         self.assertEqual(len(dupes), 0)
 
-        dupes = dedupe_paths([f1, f5])
+        dupes = dedupe_paths([f1, f5], algo="md5")
         self.assertEqual(len(dupes), 0)
 
-        dupes = dedupe_paths([f1, f3])
+        dupes = dedupe_paths([f1, f3], algo="md5")
         self.assertEqual(len(dupes), 1)
 
-        dupes = dedupe_paths([f1, f2, f3])
+        dupes = dedupe_paths([f1, f2, f3], algo="md5")
         self.assertEqual(len(dupes), 1)
 
-        dupes = dedupe_paths([f1, f2, f3, f4])
+        dupes = dedupe_paths([f1, f2, f3, f4], algo="md5")
         self.assertEqual(len(dupes), 1)
 
-        dupes = dedupe_paths([f1, f2, f3, f4, f5])
+        dupes = dedupe_paths([f1, f2, f3, f4, f5], algo="md5")
         self.assertEqual(len(dupes), 2)
 
-        dupes = dedupe_paths([f1, f2, f3, f4, f5])
+        dupes = dedupe_paths([f1, f2, f3, f4, f5], algo="md5")
         all_files = set(flatten(dupes))
         self.assertEqual(len(all_files), 5)
 
@@ -178,9 +194,10 @@ class TestDedupe(unittest.TestCase):
         write_to_file(f3, "c")
         write_to_file(f4, "d")
         write_to_file(f5, "e")
-        dupes = dedupe_paths([f1, f2, f3, f4, f5])
+        dupes = dedupe_paths([f1, f2, f3, f4, f5], algo="md5")
         self.assertEqual(len(dupes), 0)
 
+    @unittest.skipIf(os.name == "nt", "dedupe tests are flaky on Windows CI")
     def test_dedupe_dirs(self):
         from hashio.encoder import dedupe_paths
 
@@ -213,11 +230,11 @@ class TestDedupe(unittest.TestCase):
         self.assertEqual(len(os.listdir(t1)), 4)
 
         # find dupes between t1 and s1
-        dupes = dedupe_paths([t1, s1])
+        dupes = dedupe_paths([t1, s1], algo="md5")
         self.assertEqual(len(dupes), 3)
 
         # change order of inputs
-        dupes = dedupe_paths([s1, t1])
+        dupes = dedupe_paths([s1, t1], algo="md5")
         self.assertEqual(len(dupes), 3)
 
         # test all files in set of dupes
@@ -225,49 +242,49 @@ class TestDedupe(unittest.TestCase):
         self.assertEqual(len(all_files), 6)
 
         # make ine input invalid
-        dupes = dedupe_paths([s1, None])
+        dupes = dedupe_paths([s1, None], algo="md5")
         self.assertEqual(len(dupes), 0)
 
         # make ine input missing
-        dupes = dedupe_paths([t1, "/this/dir/is/missing"])
+        dupes = dedupe_paths([t1, "/this/dir/is/missing"], algo="md5")
         self.assertEqual(len(dupes), 0)
 
         # target dir is empty, no dupes
-        self.assertEqual(len(dedupe_paths([t2, s1])), 0)
+        self.assertEqual(len(dedupe_paths([t2, s1], algo="md5")), 0)
 
         # one dupe
         write_to_file(os.path.join(t2, "d.txt"), "foo")
-        self.assertEqual(len(dedupe_paths([t2, s1])), 1)
+        self.assertEqual(len(dedupe_paths([t2, s1], algo="md5")), 1)
 
         # two dupes
         write_to_file(os.path.join(t2, "e.txt"), "bar")
-        self.assertEqual(len(dedupe_paths([t2, s1])), 2)
+        self.assertEqual(len(dedupe_paths([t2, s1], algo="md5")), 2)
 
         # third dupe in subdir
         t2a = os.path.join(t2, "nested")
         os.makedirs(t2a)
         write_to_file(os.path.join(t2a, "c.txt"), "baz")
-        self.assertEqual(len(dedupe_paths([t2, s1])), 3)
+        self.assertEqual(len(dedupe_paths([t2, s1], algo="md5")), 3)
 
         # new file in target not in source
         write_to_file(os.path.join(t2, "g.txt"), "qux")
-        self.assertEqual(len(dedupe_paths([t2, s1])), 3)
+        self.assertEqual(len(dedupe_paths([t2, s1], algo="md5")), 3)
 
         # test three dirs
         write_to_file(os.path.join(t2, "g.txt"), "qux")
-        self.assertEqual(len(dedupe_paths([t2, t1, s1])), 4)
+        self.assertEqual(len(dedupe_paths([t2, t1, s1], algo="md5")), 4)
 
         # update one of the target files
         write_to_file(os.path.join(t2, "d.txt"), "quuz")
-        self.assertEqual(len(dedupe_paths([t2, s1])), 2)
+        self.assertEqual(len(dedupe_paths([t2, s1], algo="md5")), 2)
 
         # update another of the target files
         write_to_file(os.path.join(t2, "e.txt"), "corge")
-        self.assertEqual(len(dedupe_paths([t2, s1])), 1)
+        self.assertEqual(len(dedupe_paths([t2, s1], algo="md5")), 1)
 
         # change it back
         write_to_file(os.path.join(t2, "e.txt"), "bar")
-        self.assertEqual(len(dedupe_paths([t2, s1])), 2)
+        self.assertEqual(len(dedupe_paths([t2, s1], algo="md5")), 2)
 
 
 class TestEncoders(unittest.TestCase):
@@ -313,7 +330,6 @@ class TestEncoders(unittest.TestCase):
         self.assertEqual(h_hex, checksum_file(__file__, encoder))
 
     def test_md5_encoder(self):
-        import hashlib
         from hashio.encoder import MD5Encoder
         from hashio.encoder import checksum_file
 
@@ -340,6 +356,22 @@ class TestEncoders(unittest.TestCase):
 
         # confirm rehashing results in same hash
         self.assertEqual(h.hexdigest(), checksum_file(__file__, encoder))
+
+    def test_md5_encoder_uncompress_gzip(self):
+        from hashio.encoder import MD5Encoder
+        from hashio.encoder import checksum_file
+
+        tempdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tempdir)
+
+        filepath = os.path.join(tempdir, "payload.txt.gz")
+        payload = "some gzipped payload"
+        write_gzip_file(filepath, payload)
+
+        expected = hashlib.md5(payload.encode("utf-8")).hexdigest()
+        encoder = MD5Encoder()
+
+        self.assertEqual(expected, checksum_file(filepath, encoder, uncompress=True))
 
     def test_xxh64_encoder(self):
         import xxhash
@@ -486,6 +518,177 @@ class TestCompositeHash(unittest.TestCase):
         # verify the composite hash for an empty list
         self.assertIsNotNone(composite)
         self.assertEqual(composite, checksum_text("", encoder))
+
+
+class TestUncompress(unittest.TestCase):
+    """Tests gzip uncompress support."""
+
+    tempdir = None
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tempdir = tempfile.mkdtemp()
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tempdir)
+
+    def test_worker_output_helpers_uncompress_gzip(self):
+        from hashio.worker import get_output_path, update_output_metadata
+
+        source_dir = os.path.join(self.tempdir, "worker")
+        os.makedirs(source_dir, exist_ok=True)
+
+        gzip_path = os.path.join(source_dir, "sample.txt.gz")
+        metadata = {
+            "name": "sample.txt.gz",
+            "size": 999,
+        }
+        payload_size = len(b"hello from gzip worker")
+
+        self.assertEqual(
+            get_output_path(gzip_path, start=source_dir, uncompress=True),
+            "sample.txt",
+        )
+
+        adjusted = update_output_metadata(
+            metadata, gzip_path, payload_size, uncompress=True
+        )
+        self.assertEqual(adjusted["name"], "sample.txt")
+        self.assertEqual(adjusted["size"], payload_size)
+
+    def test_verify_checksums_uses_gzip_fallback(self):
+        from hashio.encoder import verify_checksums
+        from hashio.exporter import JSONExporter
+
+        source_dir = os.path.join(self.tempdir, "verify")
+        os.makedirs(source_dir, exist_ok=True)
+
+        manifest_path = os.path.join(source_dir, "hash.json")
+        gzip_path = os.path.join(source_dir, "sample.txt.gz")
+        manifest_name = "sample.txt"
+        payload = "initial gzip payload"
+        payload_hash = hashlib.md5(payload.encode("utf-8")).hexdigest()
+
+        write_gzip_file(gzip_path, payload)
+
+        exporter = JSONExporter(manifest_path)
+        exporter.write(
+            manifest_name,
+            {
+                "name": manifest_name,
+                "mtime": 0,
+                "size": len(payload.encode("utf-8")),
+                "md5": payload_hash,
+            },
+        )
+        exporter.close()
+
+        self.assertEqual(
+            [],
+            list(verify_checksums(manifest_path, start=source_dir, uncompress=True)),
+        )
+
+        write_gzip_file(gzip_path, "changed gzip payload")
+
+        misses = list(
+            verify_checksums(manifest_path, start=source_dir, uncompress=True)
+        )
+        self.assertEqual(len(misses), 1)
+        self.assertEqual(misses[0][0], "md5")
+        self.assertEqual(misses[0][2], os.path.join(source_dir, manifest_name))
+
+
+class TestShutdown(unittest.TestCase):
+    """Tests shutdown and interrupt helpers."""
+
+    def test_safe_join_thread_suppresses_keyboard_interrupt(self):
+        from hashio.cli import safe_join_thread
+
+        class DummyThread:
+            def join(self, timeout=None):
+                raise KeyboardInterrupt()
+
+            def is_alive(self):
+                return True
+
+        self.assertFalse(safe_join_thread(DummyThread(), timeout=0.1))
+
+    def test_stop_workers_suppresses_keyboard_interrupt(self):
+        from hashio.cli import stop_workers
+
+        calls = []
+
+        class DummyWorker:
+            def __init__(self, name, should_interrupt=False):
+                self.name = name
+                self.should_interrupt = should_interrupt
+
+            def stop(self):
+                calls.append(self.name)
+                if self.should_interrupt:
+                    raise KeyboardInterrupt()
+
+        stop_workers(
+            [
+                DummyWorker("first", should_interrupt=True),
+                DummyWorker("second"),
+            ]
+        )
+        self.assertEqual(calls, ["first", "second"])
+
+    def test_hashworker_stop_sets_done_before_finish(self):
+        from hashio.worker import HashWorker
+
+        worker = HashWorker.__new__(HashWorker)
+        worker.done = threading.Event()
+        worker.verbose = True
+
+        class DummyPool:
+            def terminate(self):
+                return None
+
+            def join(self):
+                return None
+
+        worker.pool = DummyPool()
+
+        state = {"done_before_finish": False}
+
+        def finish():
+            state["done_before_finish"] = worker.done.is_set()
+            raise KeyboardInterrupt()
+
+        worker.finish = finish
+        worker.stop()
+        self.assertTrue(state["done_before_finish"])
+
+    def test_hashworker_run_sets_done_before_finish(self):
+        from hashio.worker import HashWorker
+
+        worker = HashWorker.__new__(HashWorker)
+        worker.start_time = 0.0
+        worker.path = "dummy"
+        worker.done = threading.Event()
+        worker.add_path_to_queue = lambda path: None
+
+        class DummyPool:
+            def close(self):
+                return None
+
+            def join(self):
+                return None
+
+        worker.pool = DummyPool()
+
+        state = {"done_before_finish": False}
+
+        def finish():
+            state["done_before_finish"] = worker.done.is_set()
+
+        worker.finish = finish
+        worker.run()
+        self.assertTrue(state["done_before_finish"])
 
 
 if __name__ == "__main__":

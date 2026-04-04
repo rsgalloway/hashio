@@ -8,8 +8,6 @@ import os
 import pytest
 import sqlite3
 import sys
-import threading
-import time
 import uuid
 
 
@@ -34,40 +32,27 @@ def reset_hashio_env(tmp_path):
 def test_hashworker_retries_on_locked_cache(monkeypatch, tmp_path):
     """Test that HashWorker retries when the cache is locked by another process."""
 
-    from hashio.cache import Cache
+    from hashio.cache import Cache, with_retry
     from hashio.worker import HashWorker
 
     file_path = tmp_path / "test.txt"
     file_path.write_text("hello world")
 
-    cache = Cache()
+    @with_retry(retries=2, delay=0.01, backoff=1.0)
+    def always_locked(self, path):
+        raise sqlite3.OperationalError("database is locked")
 
-    def hold_lock():
-        conn = sqlite3.connect(cache.db_path)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("BEGIN IMMEDIATE")
-        conn.execute(
-            "INSERT OR IGNORE INTO files (id, path, mtime, algo, hash, size, inode) "
-            "VALUES (0, 'dummy', 0, 'sha256', '', 0, 'inode')"
-        )
-        time.sleep(0.5)
-        conn.commit()
-
-    # start lock-holder thread
-    locker = threading.Thread(target=hold_lock)
-    locker.start()
-    time.sleep(0.1)
+    monkeypatch.setattr(Cache, "merge", always_locked)
 
     # run the worker
     worker = HashWorker(str(file_path), force=True, verbose=True)
 
     # this should raise RuntimeError due to the lock
-    with pytest.raises(RuntimeError) as exc_info:
+    with pytest.raises(RuntimeError):
         worker.run()
 
-    locker.join()
-
     # verify the insert failed
+    cache = Cache()
     conn = sqlite3.connect(cache.db_path)
     row = conn.execute(
         "SELECT path, hash FROM files WHERE path = ?", [str(file_path)]

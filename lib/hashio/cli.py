@@ -48,6 +48,24 @@ from hashio.encoder import get_encoder_class, verify_caches, verify_checksums
 from hashio.worker import HashWorker
 
 
+def safe_join_thread(thread: threading.Thread, timeout: float = None):
+    """Join a thread while suppressing KeyboardInterrupt during shutdown."""
+    try:
+        thread.join(timeout=timeout)
+    except KeyboardInterrupt:
+        return False
+    return not thread.is_alive()
+
+
+def stop_workers(workers):
+    """Stop workers while suppressing repeated interrupts during cleanup."""
+    for worker in workers:
+        try:
+            worker.stop()
+        except KeyboardInterrupt:
+            continue
+
+
 def format_result(row):
     """Format a row from the cache query into a human-readable string."""
     # unpack row data
@@ -161,6 +179,11 @@ def parse_args():
         metavar="HASHFILE",
         nargs="*",
         help="verify checksums from a previously created hash file",
+    )
+    parser.add_argument(
+        "--uncompress",
+        action="store_true",
+        help="hash and verify the decompressed contents of .gz files",
     )
 
     # mutually exclusive group for cache operations
@@ -351,11 +374,13 @@ def main():
                 print(f"file not found: {config.CACHE_FILENAME}")
                 return 0
             for algo, value, miss in verify_checksums(
-                config.CACHE_FILENAME, start=args.start
+                config.CACHE_FILENAME, start=args.start, uncompress=args.uncompress
             ):
                 print("{0} {1}".format(algo, miss))
         elif len(args.verify) == 1:
-            for algo, value, miss in verify_checksums(args.verify[0], start=args.start):
+            for algo, value, miss in verify_checksums(
+                args.verify[0], start=args.start, uncompress=args.uncompress
+            ):
                 print("{0} {1}".format(algo, miss))
         elif len(args.verify) == 2:
             source = args.verify[0]
@@ -392,6 +417,7 @@ def main():
                 snapshot=args_dict["snapshot"],
                 force=args_dict["force"],
                 verbose=verbose,
+                uncompress=args_dict["uncompress"],
             )
             workers.append(worker)
 
@@ -410,18 +436,18 @@ def main():
         while any(t.is_alive() for t in worker_threads):
             # wait for all workers to finish
             for t in worker_threads:
-                t.join(timeout=0.2)
+                safe_join_thread(t, timeout=0.2)
 
             # now wait for progress threads to exit
             for t in progress_threads:
-                t.join()
+                safe_join_thread(t, timeout=0.2)
 
     except KeyboardInterrupt:
-        for worker in workers:
-            worker.stop()
+        stop_workers(workers)
         for t in progress_threads:
-            t.join(timeout=0.2)
+            safe_join_thread(t, timeout=0.2)
         print("stopping...")
+        return 130
 
     finally:
         if len(paths) > 1 and not (args.verbose or args.summarize):

@@ -37,12 +37,12 @@ import hashlib
 import os
 import xxhash
 import zlib
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 from hashio import config
 from hashio.exporter import CacheExporter
 from hashio.logger import logger
-from hashio.utils import read_file, walk
+from hashio.utils import is_gzip_path, read_file, read_file_uncompressed, walk
 
 
 def bytes_to_long(data: bytes):
@@ -321,7 +321,13 @@ def checksum_data(data: bytes, encoder: Encoder, buffer_size: int = config.BUF_S
     return value
 
 
-def checksum_file(path: str, encoder: Encoder, buffer_size: int = config.BUF_SIZE):
+def checksum_file(
+    path: str,
+    encoder: Encoder,
+    buffer_size: int = config.BUF_SIZE,
+    uncompress: bool = False,
+    with_size: bool = False,
+) -> Union[str, Tuple[str, int]]:
     """Creates a checksum for a given filepath and encoder. Note: resets
     encoder, existing data will be lost.
 
@@ -329,13 +335,21 @@ def checksum_file(path: str, encoder: Encoder, buffer_size: int = config.BUF_SIZ
 
     :param path: the path to the filepath being hashed
     :param encoder: instance of Encoder subclass
-    :return: hexdigest of the checksum
+    :param buffer_size: size of each read chunk in bytes
+    :param uncompress: if True, hash decompressed contents for supported files
+    :param with_size: if True, also return the total bytes hashed
+    :return: checksum hex digest, or ``(checksum, size)`` when ``with_size`` is True
     """
     encoder.reset()
-    for data in read_file(path, buffer_size=buffer_size):
+    size = 0
+    reader = read_file_uncompressed if uncompress and is_gzip_path(path) else read_file
+    for data in reader(path, buffer_size=buffer_size):
+        size += len(data)
         encoder.update(data)
     value = encoder.hexdigest()
     encoder.reset()
+    if with_size:
+        return value, size
     return value
 
 
@@ -372,7 +386,11 @@ def checksum_text(data: str, encoder: Encoder):
 
 
 def checksum_path(
-    path: str, encoder: Encoder, filetype: str = "a", use_cache: bool = True
+    path: str,
+    encoder: Encoder,
+    filetype: str = "a",
+    use_cache: bool = True,
+    uncompress: bool = False,
 ):
     """Returns a checksum of for a given path, encoder and filetype.
 
@@ -384,12 +402,12 @@ def checksum_path(
     :param use_cache: cache results to filesystem
     :return: hexdigest of the checksum
     """
-    if use_cache:
+    if use_cache and not uncompress:
         cached_value = CacheExporter.find(path, encoder.name)
         if cached_value:
             return cached_value
     if os.path.isfile(path) and filetype in ("a", "f"):
-        return checksum_file(path, encoder)
+        return checksum_file(path, encoder, uncompress=uncompress)
     elif os.path.isdir(path) and filetype in ("a", "d"):
         return checksum_folder(path, encoder)
 
@@ -400,6 +418,7 @@ def checksum_gen(
     filetype: str = "f",
     recursive: bool = True,
     use_cache: bool = True,
+    uncompress: bool = False,
 ):
     """Checksum generator that yields tuple of (filepath, value).
 
@@ -415,12 +434,12 @@ def checksum_gen(
     """
     if recursive:
         for subpath in walk(path, filetype):
-            value = checksum_path(subpath, encoder, filetype, use_cache)
+            value = checksum_path(subpath, encoder, filetype, use_cache, uncompress)
             if value:
                 yield (subpath, value)
 
     else:
-        value = checksum_path(path, encoder, filetype, use_cache)
+        value = checksum_path(path, encoder, filetype, use_cache, uncompress)
         if value:
             yield (path, value)
 
@@ -629,7 +648,7 @@ def dedupe_caches(target: str, source: str, algo: str = config.DEFAULT_ALGO):
     return [(t, s) for t, s in dedupe_cache_gen(target, source, algo=algo)]
 
 
-def verify_checksums(path: str, start: str = None):
+def verify_checksums(path: str, start: str = None, uncompress: bool = False):
     """Generator that yields a data tuple for hash misses in a previously
     generated output file. Compares mtimes in the output file with the
     filesystem.
@@ -653,6 +672,12 @@ def verify_checksums(path: str, start: str = None):
 
     for filename, metadata in data.items():
         filepath = os.path.join(root, filename)
+        hash_path = filepath
+
+        if uncompress and not os.path.exists(hash_path):
+            gzip_path = f"{filepath}.gz"
+            if os.path.exists(gzip_path):
+                hash_path = gzip_path
 
         # iterate over all the hash algos...
         for algo in ENCODER_MAP.keys():
@@ -660,22 +685,23 @@ def verify_checksums(path: str, start: str = None):
                 continue
 
             # check if file exists and compare mtimes
-            if not os.path.exists(filepath):
+            if not os.path.exists(hash_path):
                 logger.warning("missing: %s", filepath)
                 continue
             # if mtimes match, skip
-            elif metadata.get("mtime") == os.stat(filepath).st_mtime:
+            elif metadata.get("mtime") == os.stat(hash_path).st_mtime:
                 continue
 
             # if mtimes don't match, re-hash the file
-            logger.debug("mtime miss on %s", filepath)
+            logger.debug("mtime miss on %s", hash_path)
             old_value = metadata.get(algo)
             encoder = ENCODER_MAP.get(algo)()
-            new_value = checksum_path(filepath, encoder)
+            do_uncompress = uncompress and is_gzip_path(hash_path)
+            new_value = checksum_path(hash_path, encoder, uncompress=do_uncompress)
 
             # hash values don't match, file must have changed
             if (new_value and old_value) and (new_value != old_value):
-                logger.debug("hash miss on %s %s", algo, filepath)
+                logger.debug("hash miss on %s %s", algo, hash_path)
                 yield (algo, new_value, filepath)
 
 

@@ -79,6 +79,18 @@ available) or regenerated hash values if mtimes are missing or different:
 $ hashio --verify hash.json
 ```
 
+To hash the decompressed contents of `.gz` files instead of the archive bytes,
+use `--uncompress`. In this mode, manifest entries are written using the
+uncompressed filename:
+
+```bash
+$ hashio sample.txt.gz -o hash.json --uncompress
+$ hashio --verify hash.json --uncompress
+```
+
+Note: `--uncompress` currently supports `.gz` files only, and bypasses the hash
+cache so compressed-byte hashes are not mixed with decompressed-content hashes.
+
 #### Portability
 
 To make a portable hash file, use `-or` to make the paths relative to the

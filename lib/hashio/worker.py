@@ -45,7 +45,12 @@ from hashio import config, utils
 from hashio.cache import Cache
 from hashio.encoder import checksum_file
 from hashio.logger import logger
-from hashio.utils import get_metadata, normalize_path
+from hashio.utils import (
+    get_metadata,
+    get_uncompressed_path,
+    is_gzip_path,
+    normalize_path,
+)
 
 # wait time in seconds to check for queue emptiness
 WAIT_TIME = 0.25
@@ -80,6 +85,22 @@ def get_exporter(outfile: str):
     return exporter_class(outfile)
 
 
+def get_output_path(path: str, start: str = None, uncompress: bool = False):
+    """Returns the normalized output path for a file."""
+    output_path = get_uncompressed_path(path) if uncompress else path
+    return normalize_path(output_path, start=start)
+
+
+def update_output_metadata(
+    metadata: dict, path: str, size: int, uncompress: bool = False
+):
+    """Returns metadata adjusted for manifest output."""
+    if uncompress and is_gzip_path(path):
+        metadata["name"] = os.path.basename(get_uncompressed_path(path))
+        metadata["size"] = size
+    return metadata
+
+
 class HashWorker:
     """A multiprocessing hash worker class.
 
@@ -98,6 +119,7 @@ class HashWorker:
         merge_interval: int = config.MERGE_INTERVAL,
         force: bool = False,
         verbose: int = 0,
+        uncompress: bool = False,
     ):
         """Initializes a HashWorker instance.
 
@@ -118,6 +140,7 @@ class HashWorker:
         self.snapshot = snapshot
         self.procs = procs
         self.force = force
+        self.uncompress = uncompress
         self.lock = Lock()
         self.start_time = 0.0
         self.total_time = 0.0
@@ -133,7 +156,7 @@ class HashWorker:
         self.current_file = multiprocessing.Array(
             ctypes.c_char, CURRENT_FILE_BUFFER_SIZE
         )
-        self.start = start or os.path.relpath(path)
+        self.start = start or os.getcwd()
         self.exporter = get_exporter(outfile)
         self.queue = Queue()  # task queue
         self.pool = Pool(self.procs, HashWorker.main, (self,))
@@ -189,7 +212,9 @@ class HashWorker:
             cache = Cache()
 
         # normalize the path for consistent output
-        normalized_path = normalize_path(path, start=self.start)
+        normalized_path = get_output_path(
+            path, start=self.start, uncompress=self.uncompress
+        )
 
         # skip if the normalized path is the same as the outfile
         if normalized_path == self.outfile:
@@ -200,7 +225,7 @@ class HashWorker:
 
         # check if the hash is cached
         cached_hash = None
-        if cache and not self.force:
+        if cache and not self.force and not self.uncompress:
             abs_path = os.path.abspath(path)
             cached_hash = cache.get(abs_path, mtime, self.algo)
 
@@ -215,8 +240,18 @@ class HashWorker:
             do_write = True
             try:
                 encoder = get_encoder(self.algo)
-                value = checksum_file(path, encoder, buffer_size=self.buffer_size)
+                do_uncompress = self.uncompress and is_gzip_path(path)
+                value, size = checksum_file(
+                    path,
+                    encoder,
+                    buffer_size=self.buffer_size,
+                    uncompress=do_uncompress,
+                    with_size=True,
+                )
                 metadata[self.algo] = value
+                metadata = update_output_metadata(
+                    metadata, path, size, uncompress=do_uncompress
+                )
             except OSError as e:
                 logger.debug(str(e))
                 return
@@ -257,6 +292,9 @@ class HashWorker:
     def write(self, data: dict):
         """Write hash result to this worker's temp cache."""
         from hashio.encoder import ENCODER_MAP
+
+        if self.uncompress:
+            return
 
         if self.temp_cache is None:
             pid = os.getpid()
@@ -342,6 +380,20 @@ class HashWorker:
         if self.temp_cache:
             self.temp_cache = None
 
+    def finish(self):
+        """Finalize worker resources."""
+        try:
+            self.merge()
+        finally:
+            try:
+                self.queue.close()
+                self.queue.join_thread()
+            except Exception:
+                pass
+            self.total_time = time.time() - self.start_time
+            if self.exporter:
+                self.exporter.close()
+
     def run(self):
         """Runs the worker."""
         self.start_time = time.time()
@@ -351,24 +403,24 @@ class HashWorker:
             self.pool.close()
             self.pool.join()
         finally:
-            self.merge()
-            self.queue.close()
-            self.queue.join_thread()
-            self.total_time = time.time() - self.start_time
             self.done.set()
-            if self.exporter:
-                self.exporter.close()
+            self.finish()
 
     def stop(self):
         """Stops the worker and cleans up resources."""
+        self.done.set()
         if self.pool:
             self.pool.terminate()
-            self.pool.join()
-        self.total_time = time.time() - self.start_time
-        self.done.set()
+            try:
+                self.pool.join()
+            except KeyboardInterrupt:
+                pass
         if not self.verbose:
             logger.info("Merging results to central cache...")
-        self.merge()
+        try:
+            self.finish()
+        except KeyboardInterrupt:
+            pass
         logger.debug("Stopping %s", multiprocessing.current_process())
 
     def progress_count(self):

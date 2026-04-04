@@ -61,7 +61,9 @@ def test_hashworker_succeeds_after_retry(monkeypatch, tmp_path):
     # try a quick dummy insert from main thread
     test_conn = sqlite3.connect(cache.db_path)
     test_conn.execute("PRAGMA journal_mode=WAL")
-    test_conn.execute("INSERT INTO files VALUES (999, 'main', 0, 'sha256', '', 0, 'inode', strftime('%s','now'))")
+    test_conn.execute(
+        "INSERT INTO files VALUES (999, 'main', 0, 'sha256', '', 0, 'inode', strftime('%s','now'))"
+    )
     test_conn.commit()
     test_conn.close()
 
