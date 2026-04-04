@@ -9,6 +9,7 @@ import hashlib
 import os
 import shutil
 import tempfile
+import threading
 import unittest
 
 import hashio
@@ -594,6 +595,98 @@ class TestUncompress(unittest.TestCase):
         self.assertEqual(len(misses), 1)
         self.assertEqual(misses[0][0], "md5")
         self.assertEqual(misses[0][2], os.path.join(source_dir, manifest_name))
+
+
+class TestShutdown(unittest.TestCase):
+    """Tests shutdown and interrupt helpers."""
+
+    def test_safe_join_thread_suppresses_keyboard_interrupt(self):
+        from hashio.cli import safe_join_thread
+
+        class DummyThread:
+            def join(self, timeout=None):
+                raise KeyboardInterrupt()
+
+            def is_alive(self):
+                return True
+
+        self.assertFalse(safe_join_thread(DummyThread(), timeout=0.1))
+
+    def test_stop_workers_suppresses_keyboard_interrupt(self):
+        from hashio.cli import stop_workers
+
+        calls = []
+
+        class DummyWorker:
+            def __init__(self, name, should_interrupt=False):
+                self.name = name
+                self.should_interrupt = should_interrupt
+
+            def stop(self):
+                calls.append(self.name)
+                if self.should_interrupt:
+                    raise KeyboardInterrupt()
+
+        stop_workers(
+            [
+                DummyWorker("first", should_interrupt=True),
+                DummyWorker("second"),
+            ]
+        )
+        self.assertEqual(calls, ["first", "second"])
+
+    def test_hashworker_stop_sets_done_before_finish(self):
+        from hashio.worker import HashWorker
+
+        worker = HashWorker.__new__(HashWorker)
+        worker.done = threading.Event()
+        worker.verbose = True
+
+        class DummyPool:
+            def terminate(self):
+                return None
+
+            def join(self):
+                return None
+
+        worker.pool = DummyPool()
+
+        state = {"done_before_finish": False}
+
+        def finish():
+            state["done_before_finish"] = worker.done.is_set()
+            raise KeyboardInterrupt()
+
+        worker.finish = finish
+        worker.stop()
+        self.assertTrue(state["done_before_finish"])
+
+    def test_hashworker_run_sets_done_before_finish(self):
+        from hashio.worker import HashWorker
+
+        worker = HashWorker.__new__(HashWorker)
+        worker.start_time = 0.0
+        worker.path = "dummy"
+        worker.done = threading.Event()
+        worker.add_path_to_queue = lambda path: None
+
+        class DummyPool:
+            def close(self):
+                return None
+
+            def join(self):
+                return None
+
+        worker.pool = DummyPool()
+
+        state = {"done_before_finish": False}
+
+        def finish():
+            state["done_before_finish"] = worker.done.is_set()
+
+        worker.finish = finish
+        worker.run()
+        self.assertTrue(state["done_before_finish"])
 
 
 if __name__ == "__main__":

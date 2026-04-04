@@ -380,6 +380,20 @@ class HashWorker:
         if self.temp_cache:
             self.temp_cache = None
 
+    def finish(self):
+        """Finalize worker resources."""
+        try:
+            self.merge()
+        finally:
+            try:
+                self.queue.close()
+                self.queue.join_thread()
+            except Exception:
+                pass
+            self.total_time = time.time() - self.start_time
+            if self.exporter:
+                self.exporter.close()
+
     def run(self):
         """Runs the worker."""
         self.start_time = time.time()
@@ -389,24 +403,24 @@ class HashWorker:
             self.pool.close()
             self.pool.join()
         finally:
-            self.merge()
-            self.queue.close()
-            self.queue.join_thread()
-            self.total_time = time.time() - self.start_time
             self.done.set()
-            if self.exporter:
-                self.exporter.close()
+            self.finish()
 
     def stop(self):
         """Stops the worker and cleans up resources."""
+        self.done.set()
         if self.pool:
             self.pool.terminate()
-            self.pool.join()
-        self.total_time = time.time() - self.start_time
-        self.done.set()
+            try:
+                self.pool.join()
+            except KeyboardInterrupt:
+                pass
         if not self.verbose:
             logger.info("Merging results to central cache...")
-        self.merge()
+        try:
+            self.finish()
+        except KeyboardInterrupt:
+            pass
         logger.debug("Stopping %s", multiprocessing.current_process())
 
     def progress_count(self):
