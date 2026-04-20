@@ -43,16 +43,17 @@ try:
 except ModuleNotFoundError:
     print(
         "\ERROR: Your Python installation does not include sqlite3.\n"
-        "hashio>=0.4.0 requires sqlite3 support for caching.\n"
+        "hashio cache and snapshot features require sqlite3 support.\n"
+        "Core hashing still works without sqlite3, but cache-related commands will not.\n"
         "You can either:\n"
         "  - install Python with sqlite3 support\n"
-        "  - or pin to an older version: pip install 'hashio<0.4.0'\n",
+        "  - or avoid cache-related features\n",
         file=sys.stderr,
     )
 
 setup(
     name="hashio",
-    version="0.5.0",
+    version="0.5.1",
     description="Custom file and directory checksum tool",
     long_description=long_description,
     long_description_content_type="text/markdown",

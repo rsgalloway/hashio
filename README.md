@@ -10,7 +10,7 @@ Custom file and directory checksum and verification tool.
 - recursively runs checksums on files in directory trees
 - ignores predefined file name patterns
 - collects important file stat metadata
-- caches results for better performance
+- supports optional caching for repeated runs and snapshots
 
 ## Installation
 
@@ -45,8 +45,9 @@ $ hashio <PATH> -o hash.json [--algo ALGO]
 $ hashio <PATH> -o hash.txt
 ```
 
-If no output file is specified, the hash results are stored in a cache, defined
-by `${HASHIO_DB}`.
+If no output file is specified, `hashio` computes checksums without writing a
+manifest. Enable `--cache` to also store results in the configured cache at
+`${HASHIO_DB}`.
 
 #### Quick usage with uvx
 
