@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2024-2025, Ryan Galloway (ryan@rsgalloway.com)
+# Copyright (c) 2024-2026, Ryan Galloway (ryan@rsgalloway.com)
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -36,6 +36,22 @@ Contains default hashio configs and settings.
 import logging
 import os
 import platform
+
+
+def env_to_bool(key: str, default: bool = False) -> bool:
+    """Safely evaluates an environment variable as a boolean."""
+    value = os.getenv(key)
+    if value is None:
+        return default
+
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+
+    logging.warning("Invalid %s value. Using default: %s. Got: %r", key, default, value)
+    return default
 
 
 def safe_eval(key: str, default: int):
@@ -78,6 +94,9 @@ CACHE_FILENAME = os.getenv("HASHIO_FILE", "hash.json")
 
 # default central database filename
 DEFAULT_DB_PATH = os.getenv("HASHIO_DB", os.path.join(CACHE_ROOT, "hash.sql"))
+
+# enable cache lookups and writes during hashing
+DEFAULT_USE_CACHE = env_to_bool("HASHIO_USE_CACHE", False)
 
 # the default hashing algorithm to use
 DEFAULT_ALGO = os.getenv("HASHIO_ALGO", "xxh64")

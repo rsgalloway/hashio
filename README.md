@@ -10,7 +10,7 @@ Custom file and directory checksum and verification tool.
 - recursively runs checksums on files in directory trees
 - ignores predefined file name patterns
 - collects important file stat metadata
-- caches results for better performance
+- supports optional caching for repeated runs and snapshots
 
 ## Installation
 
@@ -20,7 +20,7 @@ The easiest way to install:
 $ pip install -U hashio
 ```
 
-Note: Starting with hashio 0.4.0, a SQLite-backed cache is used by default.
+Note: Starting with hashio 0.4.0, hashio includes an optional SQLite-backed cache.
 If your Python installation does not include sqlite3, either:
 
 - Rebuild Python with SQLite support (e.g. libsqlite3-dev, sqlite-devel)
@@ -45,8 +45,9 @@ $ hashio <PATH> -o hash.json [--algo ALGO]
 $ hashio <PATH> -o hash.txt
 ```
 
-If no output file is specified, the hash results are stored in a cache, defined
-by `${HASHIO_DB}`.
+If no output file is specified, `hashio` computes checksums without writing a
+manifest. Enable `--cache` to also store results in the configured cache at
+`${HASHIO_DB}`.
 
 #### Quick usage with uvx
 
@@ -124,6 +125,7 @@ the config.py module.
 | HASHIO_ALGO  | default hashing algorithm to use |
 | HASHIO_DB    | hashio cache db location |
 | HASHIO_FILE  | default hash file location |
+| HASHIO_USE_CACHE | enable cache lookups/writes during hashing |
 | HASHIO_IGNORABLE | comma separated list of ignorable file patterns |
 | LOG_LEVEL    | logging level to use (DEBUG, INFO, etc) |
 | MAX_PROCS    | max number hash processes to spawn |
@@ -168,9 +170,23 @@ $ export HASHIO_ALGO=null
 
 ## Cache File and Snapshots
 
-`hashio` maintains a local SQLite cache file (by default at `~/.cache/hashio/hash.sql`)
+`hashio` can maintain a local SQLite cache file (by default at `~/.cache/hashio/hash.sql`)
 to store previously computed file hashes, metadata, and snapshot history. This
 dramatically speeds up repeated runs and enables powerful diffing capabilities.
+
+Caching is disabled by default for hashing runs. Enable it with either:
+
+```bash
+$ hashio --cache <PATH>
+```
+
+or:
+
+```bash
+$ export HASHIO_USE_CACHE=1
+```
+
+Use `--no-cache` to override the environment and force it off for a run.
 
 #### Snapshots
 
