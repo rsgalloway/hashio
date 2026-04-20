@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2024-2025, Ryan Galloway (ryan@rsgalloway.com)
+# Copyright (c) 2024-2026, Ryan Galloway (ryan@rsgalloway.com)
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -43,7 +43,7 @@ from tqdm import tqdm
 from datetime import datetime
 
 from hashio import __version__, config, utils
-from hashio.cache import Cache
+from hashio.cache import Cache, SQLiteUnavailableError, require_sqlite_support
 from hashio.encoder import get_encoder_class, verify_caches, verify_checksums
 from hashio.worker import HashWorker
 
@@ -312,6 +312,27 @@ def main(argv=None):
     """Main thread."""
 
     args = parse_args(argv)
+    if args.snapshot:
+        args.use_cache = True
+
+    cache_requested = any(
+        [
+            args.use_cache,
+            args.update_cache,
+            bool(args.merge),
+            bool(args.query),
+            args.list_snapshots,
+            bool(args.diff),
+            bool(args.snapshot),
+        ]
+    )
+
+    try:
+        if cache_requested:
+            require_sqlite_support()
+    except SQLiteUnavailableError as e:
+        print(str(e), file=sys.stderr)
+        return 2
 
     # validate and update the cache
     if args.update_cache:

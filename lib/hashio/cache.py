@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2024-2025, Ryan Galloway (ryan@rsgalloway.com)
+# Copyright (c) 2024-2026, Ryan Galloway (ryan@rsgalloway.com)
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -37,7 +37,6 @@ import fnmatch
 import functools
 import os
 import random
-import sqlite3
 import time
 
 from datetime import datetime
@@ -46,6 +45,11 @@ from typing import Optional
 
 from hashio.config import DEFAULT_DB_PATH
 from hashio.logger import logger
+
+try:
+    import sqlite3
+except ModuleNotFoundError:
+    sqlite3 = None
 
 # sqlite3 OperationalError messages that indicate a locked database
 LOCK_MESSAGES = [
@@ -57,18 +61,44 @@ LOCK_MESSAGES = [
 ]
 
 
+class SQLiteUnavailableError(RuntimeError):
+    """Raised when cache functionality is requested without sqlite3 support."""
+
+
+def require_sqlite_support():
+    """Raise a clear error if sqlite3 is unavailable."""
+    if sqlite3 is None:
+        raise SQLiteUnavailableError(
+            "sqlite3 support is required for cache and snapshot features."
+        )
+
+
+def require_sqlite(fn):
+    """Ensure sqlite3 support exists before using cache functionality."""
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        require_sqlite_support()
+        return fn(*args, **kwargs)
+
+    return wrapper
+
+
 def with_retry(retries: int = 5, delay: float = 0.2, backoff: float = 1.25):
     """Retry a function on SQLite 'database is locked' errors using exponential backoff."""
 
     def decorator(fn):
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
+            require_sqlite_support()
             _delay = delay
             last_err = None
             for i in range(retries):
                 try:
                     return fn(*args, **kwargs)
-                except sqlite3.OperationalError as e:
+                except Exception as e:
+                    if not isinstance(e, sqlite3.OperationalError):
+                        raise
                     logger.debug(
                         f"{fn.__name__} attempt {i + 1} with delay {_delay:.2f}s"
                     )
@@ -136,6 +166,7 @@ class LRU:
 class Cache:
     """A class to manage a SQLite database cache for file hashes."""
 
+    @require_sqlite
     def __init__(self, db_path: str = DEFAULT_DB_PATH):
         """Initialize the cache with a database path.
 

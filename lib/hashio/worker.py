@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2024-2025, Ryan Galloway (ryan@rsgalloway.com)
+# Copyright (c) 2024-2026, Ryan Galloway (ryan@rsgalloway.com)
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -372,18 +372,19 @@ class HashWorker:
 
         merged_paths = set()
 
-        while not self.temp_db_queue.empty():
+        while True:
             try:
                 db_path = self.temp_db_queue.get_nowait()
-                if db_path in merged_paths:
-                    continue  # avoid merging same file twice
-                with self.lock:
-                    logger.debug("Merging %s into main cache", db_path)
-                    main_cache.merge(db_path)
-                    merged_paths.add(db_path)
-                    os.remove(db_path)
             except queue.Empty:
                 break
+
+            if db_path in merged_paths:
+                continue  # avoid merging same file twice
+            with self.lock:
+                logger.debug("Merging %s into main cache", db_path)
+                main_cache.merge(db_path)
+                merged_paths.add(db_path)
+                os.remove(db_path)
 
         if self.temp_cache:
             self.temp_cache = None
