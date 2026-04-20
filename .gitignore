@@ -16,5 +16,6 @@ tmp/
 .env
 .venv*/
 *.spec
+.code*
 venv*/
 .vscode/

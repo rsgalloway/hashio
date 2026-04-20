@@ -15,6 +15,7 @@ import uuid
 def reset_hashio_env(tmp_path):
     """Sets up the hashio environment for testing."""
     db_path = tmp_path / f"hashio_test_{uuid.uuid4().hex}.db"
+    os.environ["HOME"] = str(tmp_path)
     os.environ["HASHIO_DB"] = str(db_path)
     os.environ["LOG_LEVEL"] = "DEBUG"
 
@@ -25,6 +26,7 @@ def reset_hashio_env(tmp_path):
 
     yield
 
+    os.environ.pop("HOME", None)
     os.environ.pop("HASHIO_DB", None)
     os.environ.pop("LOG_LEVEL", None)
 
@@ -45,7 +47,7 @@ def test_hashworker_retries_on_locked_cache(monkeypatch, tmp_path):
     monkeypatch.setattr(Cache, "merge", always_locked)
 
     # run the worker
-    worker = HashWorker(str(file_path), force=True, verbose=True)
+    worker = HashWorker(str(file_path), force=True, verbose=True, use_cache=True)
 
     # this should raise RuntimeError due to the lock
     with pytest.raises(RuntimeError):

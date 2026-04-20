@@ -39,7 +39,7 @@ import os
 import queue
 import time
 import uuid
-from multiprocessing import Event, Lock, Pool, Manager, Queue, Value
+from multiprocessing import Event, Lock, Pool, Queue, Value
 
 from hashio import config, utils
 from hashio.cache import Cache
@@ -120,6 +120,7 @@ class HashWorker:
         force: bool = False,
         verbose: int = 0,
         uncompress: bool = False,
+        use_cache: bool = config.DEFAULT_USE_CACHE,
     ):
         """Initializes a HashWorker instance.
 
@@ -141,6 +142,7 @@ class HashWorker:
         self.procs = procs
         self.force = force
         self.uncompress = uncompress
+        self.use_cache = use_cache
         self.lock = Lock()
         self.start_time = 0.0
         self.total_time = 0.0
@@ -150,7 +152,7 @@ class HashWorker:
         self.bytes_hashed = Value(ctypes.c_ulonglong, 0)  # shared bytes counter
         self.temp_cache = None
         self.temp_db_path = None
-        self.temp_db_queue = Manager().Queue()
+        self.temp_db_queue = Queue() if use_cache else queue.Queue()
         self.merge_interval = merge_interval
         self.last_execution_time = 0
         self.current_file = multiprocessing.Array(
@@ -194,7 +196,8 @@ class HashWorker:
         """
         logger.debug("Exploring path %s", path)
         logger.debug("Using read buffer size: %s", self.buffer_size)
-        logger.debug("Using database: %s", config.DEFAULT_DB_PATH)
+        if self.use_cache:
+            logger.debug("Using database: %s", config.DEFAULT_DB_PATH)
         for filename in utils.walk(path, filetype="f", force=self.force):
             self.add_hash_to_queue(filename)
 
@@ -206,10 +209,11 @@ class HashWorker:
         metadata = get_metadata(path)
         mtime = metadata["mtime"]
         size = metadata["size"]
-
-        # get the global cache instance
-        with self.lock:
-            cache = Cache()
+        cache = None
+        if self.use_cache:
+            # get the global cache instance
+            with self.lock:
+                cache = Cache()
 
         # normalize the path for consistent output
         normalized_path = get_output_path(
@@ -295,6 +299,8 @@ class HashWorker:
 
         if self.uncompress:
             return
+        if not self.use_cache:
+            return
 
         if self.temp_cache is None:
             pid = os.getpid()
@@ -354,6 +360,8 @@ class HashWorker:
     def merge(self):
         """Merges temporary caches into the main cache."""
         # final commit and close on temp dbs
+        if not self.use_cache:
+            return
         if self.temp_cache:
             with self.lock:
                 self.temp_cache.commit()
