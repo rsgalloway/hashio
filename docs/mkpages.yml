@@ -1,0 +1,18 @@
+title: hashio
+description: Checksum, verification, metadata, and snapshot tooling for files and directory trees.
+theme: dark
+navigation:
+  - label: Home
+    href: /
+  - label: Getting Started
+    href: /getting-started/
+  - label: Usage
+    href: /usage/
+  - label: Configuration
+    href: /configuration/
+  - label: Cache
+    href: /cache-and-snapshots/
+  - label: Python API
+    href: /python-api/
+  - label: GitHub
+    href: https://github.com/rsgalloway/hashio

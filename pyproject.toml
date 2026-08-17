@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hashio"
+version = "0.5.1"
+description = "Custom file and directory checksum tool"
+readme = { file = "README.md", content-type = "text/markdown" }
+requires-python = ">=3.6"
+license = { text = "BSD 3-Clause License" }
+authors = [{ name = "Ryan Galloway", email = "ryan@rsgalloway.com" }]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Topic :: Software Development :: Libraries",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.6",
+  "Programming Language :: Python :: 3.7",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+  "lxml==5.3.0",
+  "tqdm==4.67.1",
+  "xxhash==3.5.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/rsgalloway/hashio"
+Repository = "https://github.com/rsgalloway/hashio"
+Issues = "https://github.com/rsgalloway/hashio/issues"
+Documentation = "https://github.com/rsgalloway/hashio"
+
+[project.scripts]
+hashio = "hashio.cli:main"
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+]
+
+[tool.setuptools]
+zip-safe = false
+package-dir = {"" = "lib"}
+
+[tool.setuptools.packages.find]
+where = ["lib"]

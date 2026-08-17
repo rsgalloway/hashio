@@ -19,3 +19,4 @@ tmp/
 .code*
 venv*/
 .vscode/
+.mkpages/
