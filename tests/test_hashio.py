@@ -78,7 +78,7 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(n, "some/folder")
 
         # abs paths should not change
-        p = "/var/tmp/out.json"
+        p = os.path.join(tempfile.gettempdir(), "out.json")
         n = normalize_path(p)
         self.assertEqual(n, os.path.realpath(p).replace("\\", "/"))
 

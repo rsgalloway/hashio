@@ -24,7 +24,8 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-  "lxml==5.3.0",
+  "lxml==5.4.0; python_version < '3.14'",
+  "lxml==6.0.4; python_version >= '3.14'",
   "tqdm==4.67.1",
   "xxhash==3.5.0",
 ]
