@@ -78,18 +78,18 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(n, "some/folder")
 
         # abs paths should not change
-        p = os.path.join(tempfile.gettempdir(), "out.json")
+        temp_dir = tempfile.gettempdir()
+        fixture_dir = os.path.join(temp_dir, "hashio")
+        p = os.path.join(fixture_dir, "out.json")
         n = normalize_path(p)
         self.assertEqual(n, os.path.realpath(p).replace("\\", "/"))
 
         # abs paths where start is subpath of file
-        p = "/var/tmp/out.json"
-        n = normalize_path(p, start="/var/tmp")
+        n = normalize_path(p, start=fixture_dir)
         self.assertEqual(n, "out.json")
 
-        p = "/var/tmp/out.json"
-        n = normalize_path(p, start="/var")
-        self.assertEqual(n, "tmp/out.json")
+        n = normalize_path(p, start=temp_dir)
+        self.assertEqual(n, "hashio/out.json")
 
         # rel path where start is cwd (the default)
         p = os.path.relpath(__file__)
