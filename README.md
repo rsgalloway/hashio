@@ -1,5 +1,9 @@
 # hashio
 
+[![PyPI](https://img.shields.io/pypi/v/hashio.svg?color=blue)](https://pypi.org/project/hashio/)
+[![CI](https://github.com/rsgalloway/hashio/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/rsgalloway/hashio/actions/workflows/tests.yml)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
+
 `hashio` is a checksum and verification tool for files and directory trees.
 
 It can recursively hash content, collect filesystem metadata, verify manifests,
