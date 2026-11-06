@@ -7,7 +7,7 @@ name = "hashio"
 version = "0.5.1"
 description = "Custom file and directory checksum tool"
 readme = { file = "README.md", content-type = "text/markdown" }
-requires-python = ">=3.6"
+requires-python = ">=3.6, <3.14"
 license = { text = "BSD 3-Clause License" }
 authors = [{ name = "Ryan Galloway", email = "ryan@rsgalloway.com" }]
 classifiers = [
