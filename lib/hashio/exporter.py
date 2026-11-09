@@ -311,12 +311,14 @@ class TXTExporter(BaseExporter):
 
     def __init__(self, filepath: str, algo: str = None):
         super(TXTExporter, self).__init__(filepath)
-        self.fp = open(self.filepath, "w")
+        # Initialize once in the parent, without retaining an unpicklable handle.
+        with open(self.filepath, "w"):
+            pass
         self.algo = algo
 
     def close(self):
-        """Closes the output file."""
-        self.fp.close()
+        """Writes close their own file handles; no finalization is needed."""
+        pass
 
     @classmethod
     def read(cls, filepath: str):
@@ -360,8 +362,8 @@ class TXTExporter(BaseExporter):
                     break
 
         value = data.get(self.algo, "")
-        self.fp.write(f"{value} {path}\n")
-        self.fp.flush()
+        with open(self.filepath, "a") as fp:
+            fp.write(f"{value} {path}\n")
 
 
 def all_exporter_classes(cls: BaseExporter):

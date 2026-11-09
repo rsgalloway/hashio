@@ -152,7 +152,8 @@ class HashWorker:
         self.bytes_hashed = Value(ctypes.c_ulonglong, 0)  # shared bytes counter
         self.temp_cache = None
         self.temp_db_path = None
-        self.temp_db_queue = Queue() if use_cache else queue.Queue()
+        # The worker is serialized with spawn/forkserver even without caching.
+        self.temp_db_queue = Queue()
         self.merge_interval = merge_interval
         self.last_execution_time = 0
         self.current_file = multiprocessing.Array(
@@ -291,7 +292,9 @@ class HashWorker:
             self.bytes_hashed.value += size
 
         if self.exporter:
-            self.exporter.write(normalized_path, metadata)
+            # Keep each manifest record intact when multiple workers append.
+            with self.lock:
+                self.exporter.write(normalized_path, metadata)
 
     def write(self, data: dict):
         """Write hash result to this worker's temp cache."""
