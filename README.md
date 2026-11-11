@@ -15,11 +15,14 @@ cache for snapshots and diffs.
 - Multiple hash algorithms: `c4`, `crc32`, `md5`, `sha256`, `sha512`, `xxh64`
 - Output formats: `json`, `txt`, and `mhl`
 - Recursive hashing and manifest verification
+- Pyseq sequence patterns, frame ranges, and wildcard inputs
 - Configurable ignorable file patterns
 - Metadata-only scans with the `null` algorithm
 - Optional SQLite-backed cache and snapshot diffing
 
 ## Installation
+
+Requires Python 3.8 or newer.
 
 ```bash
 pip install -U hashio
@@ -37,6 +40,13 @@ pip install 'hashio<0.4.0'
 ```bash
 hashio <PATH> -o hash.json
 hashio --verify hash.json
+```
+
+Hash an image sequence (quote the reference so the shell passes it unchanged):
+
+```bash
+hashio 'frames/shot.%08d.png' -o hashes.json --start frames
+hashio 'frames/shot.%08d.png 1001-1010' -o hashes.json --start frames
 ```
 
 You can also run it directly with `uvx`:

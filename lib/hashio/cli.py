@@ -107,7 +107,7 @@ def parse_args(argv=None):
         metavar="PATH",
         default=[os.getcwd()],
         nargs="*",
-        help="path(s) to directory or files to hash",
+        help="files, directories, wildcards, or quoted pyseq sequence references",
     )
     parser.add_argument(
         "-o",
@@ -431,7 +431,13 @@ def main(argv=None):
         return 0
 
     args_dict = vars(args).copy()
-    paths = list(dict.fromkeys(args_dict.pop("path")))
+    from hashio.inputs import resolve_inputs
+
+    try:
+        paths = resolve_inputs(args_dict.pop("path"))
+    except ValueError as error:
+        print(str(error), file=sys.stderr)
+        return 2
 
     # validate algorithm
     if not get_encoder_class(args_dict["algo"]):
@@ -445,31 +451,35 @@ def main(argv=None):
     verbose = 2 if all(os.path.isfile(p) for p in paths) else args_dict["verbose"]
 
     try:
-        for i, path in enumerate(paths):
-            worker = HashWorker(
-                path=path,
-                outfile=args_dict["outfile"],
-                procs=args_dict["procs"],
-                start=args_dict["start"],
-                algo=args_dict["algo"],
-                snapshot=args_dict["snapshot"],
-                force=args_dict["force"],
-                verbose=verbose,
-                uncompress=args_dict["uncompress"],
-                use_cache=args_dict["use_cache"],
-            )
-            workers.append(worker)
+        # One pool and exporter for the entire selection, including sequences.
+        path = paths[0]
+        if len(paths) > 1:
+            roots = [p if os.path.isdir(p) else os.path.dirname(p) for p in paths]
+            try:
+                path = os.path.commonpath(roots)
+            except ValueError:  # Inputs on different Windows drives.
+                path = os.getcwd()
+        worker = HashWorker(
+            path=path,
+            paths=paths,
+            outfile=args_dict["outfile"],
+            procs=args_dict["procs"],
+            start=args_dict["start"],
+            algo=args_dict["algo"],
+            snapshot=args_dict["snapshot"],
+            force=args_dict["force"],
+            verbose=verbose,
+            uncompress=args_dict["uncompress"],
+            use_cache=args_dict["use_cache"],
+        )
+        workers.append(worker)
 
-            # if verbose, disable watcher and use tqdm directly
-            do_watcher = not verbose and os.path.isdir(path) and sys.stdout.isatty()
+        if not verbose and sys.stdout.isatty():
+            progress_threads.append(start_progress_thread(worker))
 
-            if do_watcher:
-                t = start_progress_thread(worker, position=i)
-                progress_threads.append(t)
-
-            thread = threading.Thread(target=worker.run)
-            thread.start()
-            worker_threads.append(thread)
+        thread = threading.Thread(target=worker.run)
+        thread.start()
+        worker_threads.append(thread)
 
         # wait for workers to finish
         while any(t.is_alive() for t in worker_threads):

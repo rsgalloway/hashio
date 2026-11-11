@@ -40,6 +40,7 @@ import queue
 import time
 import uuid
 from multiprocessing import Event, Lock, Pool, Queue, Value
+from typing import Iterable, Optional, Union
 
 from hashio import config, utils
 from hashio.cache import Cache
@@ -121,7 +122,8 @@ class HashWorker:
         verbose: int = 0,
         uncompress: bool = False,
         use_cache: bool = config.DEFAULT_USE_CACHE,
-    ):
+        paths: Optional[Iterable[Union[str, os.PathLike]]] = None,
+    ) -> None:
         """Initializes a HashWorker instance.
 
         :param path: path to search for files to hash
@@ -132,9 +134,13 @@ class HashWorker:
         :param snapshot: snapshot name to use
         :param merge_interval: interval in seconds to merge temporary caches
         :param force: hash all files including ignorable patterns
-        :param verbose: if True, print verbose output
+        :param verbose: verbosity level for per-file hash output
+        :param uncompress: hash decompressed contents of gzip files
+        :param use_cache: enable SQLite cache lookups and writes
+        :param paths: resolved files/directories to hash; defaults to ``[path]``
         """
         self.path = path
+        self.paths = list(paths) if paths is not None else [path]
         self.algo = algo
         self.buffer_size = utils.get_buffer_size(path=path)
         self.outfile = outfile
@@ -199,8 +205,24 @@ class HashWorker:
         logger.debug("Using read buffer size: %s", self.buffer_size)
         if self.use_cache:
             logger.debug("Using database: %s", config.DEFAULT_DB_PATH)
-        for filename in utils.walk(path, filetype="f", force=self.force):
-            self.add_hash_to_queue(filename)
+        self.explore_paths([path])
+
+    def explore_paths(self, paths: Iterable[Union[str, os.PathLike]]) -> None:
+        """Queue each selected file once, including overlapping directories.
+
+        :param paths: resolved files/directories to scan using ignorable-file rules
+        """
+        seen = set()
+        output = (
+            os.path.normcase(os.path.abspath(self.outfile)) if self.outfile else None
+        )
+        for path in paths:
+            for filename in utils.walk(path, filetype="f", force=self.force):
+                key = os.path.normcase(os.path.abspath(filename))
+                if key == output or key in seen:
+                    continue
+                seen.add(key)
+                self.add_hash_to_queue(filename)
 
     def do_hash(self, path: str):
         """Hashes a file and puts the result in the result queue.
@@ -409,7 +431,7 @@ class HashWorker:
     def run(self):
         """Runs the worker."""
         self.start_time = time.time()
-        self.add_path_to_queue(self.path)
+        self.add_to_queue({"task": "search_paths", "paths": self.paths})
 
         try:
             self.pool.close()
@@ -461,7 +483,9 @@ class HashWorker:
                 if data == -1:
                     break
                 task = data["task"]
-                if task == "search":
+                if task == "search_paths":
+                    worker.explore_paths(data["paths"])
+                elif task == "search":
                     worker.explore_path(data["path"])
                 elif task == "hash":
                     worker.do_hash(data["path"])
