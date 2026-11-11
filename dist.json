@@ -2,12 +2,8 @@
     "author": "ryan@rsg.io",
     "targets": {
         "bin": {
-            "source": "bin/hashio",
-            "destination": "{DEPLOY_ROOT}/bin/hashio"
-        },
-        "bat": {
-            "source": "bin/hashio.bat",
-            "destination": "{DEPLOY_ROOT}/bin/hashio.bat"
+            "source": "bin/*",
+            "destination": "{DEPLOY_ROOT}/bin/%1"
         },
         "env": {
             "source": "hashio.env",
