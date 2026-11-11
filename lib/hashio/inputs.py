@@ -19,11 +19,13 @@ class InputSelection:
     :param paths: unique absolute paths to scan
     :param sequences: original sequence references mapped to their frame paths
     :param files: explicitly selected non-sequence files for console output
+    :param console_roots: absolute scan roots mapped to their original path form
     """
 
     paths: List[str]
     sequences: Dict[str, List[str]]
     files: List[str]
+    console_roots: Dict[str, str]
 
 
 def resolve_selection(references: Iterable[Union[str, os.PathLike]]) -> InputSelection:
@@ -39,6 +41,7 @@ def resolve_selection(references: Iterable[Union[str, os.PathLike]]) -> InputSel
     paths = []
     sequences = {}
     files = []
+    console_roots = {}
     seen = set()
     for reference in references:
         reference = os.fspath(reference)
@@ -65,6 +68,7 @@ def resolve_selection(references: Iterable[Union[str, os.PathLike]]) -> InputSel
             if is_sequence:
                 sequences[reference] = [os.path.abspath(path) for path in matches]
             for path in matches:
+                original_path = path
                 path = os.path.abspath(path)
                 if not (os.path.isfile(path) or os.path.isdir(path)):
                     raise ValueError("Not a regular file or directory: {}".format(path))
@@ -74,9 +78,10 @@ def resolve_selection(references: Iterable[Union[str, os.PathLike]]) -> InputSel
                 if key not in seen:
                     seen.add(key)
                     paths.append(path)
+                    console_roots[path] = original_path
         except (OSError, ValueError) as error:
             raise ValueError("{}: {}".format(reference, error)) from error
-    return InputSelection(paths, sequences, files)
+    return InputSelection(paths, sequences, files, console_roots)
 
 
 def resolve_inputs(references: Iterable[Union[str, os.PathLike]]) -> List[str]:

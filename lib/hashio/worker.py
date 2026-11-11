@@ -40,7 +40,7 @@ import queue
 import time
 import uuid
 from multiprocessing import Event, Lock, Pool, Queue, Value
-from typing import Iterable, MutableMapping, Optional, Union
+from typing import Iterable, Mapping, MutableMapping, Optional, Union
 
 from hashio import config, utils
 from hashio.cache import Cache
@@ -125,6 +125,7 @@ class HashWorker:
         paths: Optional[Iterable[Union[str, os.PathLike]]] = None,
         results: Optional[MutableMapping[str, str]] = None,
         display_paths: Optional[Iterable[str]] = None,
+        console_roots: Optional[Mapping[str, str]] = None,
     ) -> None:
         """Initializes a HashWorker instance.
 
@@ -142,9 +143,19 @@ class HashWorker:
         :param paths: resolved files/directories to hash; defaults to ``[path]``
         :param results: optional process-safe mapping receiving per-file checksums
         :param display_paths: files to print even when verbose output is disabled
+        :param console_roots: scan roots mapped to the original console path form
         """
         self.path = path
         self.paths = list(paths) if paths is not None else [path]
+        self.console_roots = {
+            os.path.normcase(os.path.abspath(root)): (index, original)
+            for index, (root, original) in enumerate((console_roots or {}).items())
+        }
+        self.console_directories = [
+            (root, index, original)
+            for root, (index, original) in self.console_roots.items()
+            if os.path.isdir(root)
+        ]
         self.results = results
         self.display_paths = {
             os.path.normcase(os.path.abspath(p)) for p in (display_paths or [])
@@ -232,6 +243,34 @@ class HashWorker:
                 seen.add(key)
                 self.add_hash_to_queue(filename)
 
+    def console_path(self, path: str) -> str:
+        """Format a checksum path independently of manifest path normalization.
+
+        :param path: file path being hashed
+        :returns: path in the first matching input's relative or absolute form
+        """
+        absolute = os.path.abspath(path)
+        key = os.path.normcase(absolute)
+        index, display = self.console_roots.get(key, (len(self.console_roots), None))
+        # Exact frame lookups are constant-time; only directory inputs need a
+        # prefix check. An earlier directory selection takes precedence.
+        for root, root_index, original in self.console_directories:
+            if root_index >= index:
+                break
+            try:
+                if os.path.commonpath([root, key]) != root:
+                    continue
+            except ValueError:  # Different Windows drives.
+                continue
+            relative = os.path.relpath(absolute, root)
+            display = original if relative == "." else os.path.join(original, relative)
+            break
+        if display is None:
+            return get_output_path(path, start=self.start, uncompress=self.uncompress)
+        if self.uncompress:
+            display = get_uncompressed_path(display)
+        return os.path.normpath(display).replace("\\", "/")
+
     def do_hash(self, path: str):
         """Hashes a file and puts the result in the result queue.
 
@@ -297,7 +336,7 @@ class HashWorker:
             or (self.verbose == 1 and not cached_hash)
             or os.path.normcase(os.path.abspath(path)) in self.display_paths
         ):
-            print(f"{value}  {normalized_path} {extra}")
+            print(f"{value}  {self.console_path(path)} {extra}".rstrip())
 
         # write the result to the output file if required
         if do_write:

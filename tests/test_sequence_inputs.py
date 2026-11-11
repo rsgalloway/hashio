@@ -266,8 +266,8 @@ def test_cli_verbose_sequence_and_wildcard(frames: Path, tmp_path: Path) -> None
     assert lines[-1] == "{}  {}".format(
         expected_aggregate(frames, [1, 2, 3, 5]), frames / "shot.%08d.png"
     )
-    assert {line.split()[1] for line in lines[:-1]} == {
-        "shot.%08d.png" % frame for frame in (1, 2, 3, 5)
+    assert {line.split("  ", 1)[1] for line in lines[:-1]} == {
+        (frames / ("shot.%08d.png" % frame)).as_posix() for frame in (1, 2, 3, 5)
     }
     wildcard = run_cli([str(frames / "shot.0000000?.png")] + options, tmp_path)
     assert wildcard.returncode == 0, wildcard.stderr
@@ -381,3 +381,75 @@ def test_cli_cached_sequence_aggregate(frames: Path, tmp_path: Path) -> None:
     assert result.stdout.strip().splitlines()[-1] == "{}  {}".format(
         expected_aggregate(frames, [1, 2, 3, 5]), frames / "shot.%08d.png"
     )
+
+
+@pytest.mark.parametrize("absolute", [False, True])
+@pytest.mark.parametrize("kind", ["sequence", "wildcard", "file", "directory"])
+def test_cli_console_path_style(
+    frames: Path, tmp_path: Path, absolute: bool, kind: str
+) -> None:
+    """Keep console paths in input form even outside the working directory.
+
+    :param frames: directory containing frame fixtures
+    :param tmp_path: directory for the working directory and output manifest
+    :param absolute: whether to supply an absolute input reference
+    :param kind: input selection syntax to exercise
+    """
+    working = tmp_path / "work"
+    working.mkdir()
+    root = str(frames) if absolute else os.path.relpath(str(frames), str(working))
+    suffixes = {
+        "sequence": "shot.%08d.png",
+        "wildcard": "shot.0000000?.png",
+        "file": "shot.00000001.png",
+        "directory": "",
+    }
+    reference = os.path.join(root, suffixes[kind]) if suffixes[kind] else root
+    output = working / "manifest.json"
+    result = run_cli(
+        [
+            reference,
+            "-v",
+            "--no-cache",
+            "-p",
+            "2",
+            "-a",
+            "md5",
+            "-r",
+            str(frames),
+            "-o",
+            str(output),
+        ],
+        working,
+    )
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.strip().splitlines()
+    if kind == "sequence":
+        assert lines.pop() == "{}  {}".format(
+            expected_aggregate(frames, [1, 2, 3, 5]), reference
+        )
+    actual = {line.split("  ", 1)[1] for line in lines}
+    names = {"shot.%08d.png" % number for number in (1, 2, 3, 5)}
+    if kind == "file":
+        names = {"shot.00000001.png"}
+    elif kind == "directory":
+        names |= {"shot.0001.png", "shot.abcdefgh.png"}
+    assert actual == {os.path.join(root, name).replace("\\", "/") for name in names}
+    # --start continues to control manifests, regardless of console path style.
+    assert set(json.loads(output.read_text())) == names
+
+
+def test_cli_duplicate_path_style_uses_first_input(
+    frames: Path, tmp_path: Path
+) -> None:
+    """Use the first input's path form when selections overlap.
+
+    :param frames: directory containing frame fixtures
+    :param tmp_path: subprocess working directory
+    """
+    absolute = frames / "shot.00000001.png"
+    relative = os.path.relpath(str(absolute), str(tmp_path))
+    result = run_cli([relative, str(absolute), "-p", "2", "--no-cache"], tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert len(result.stdout.strip().splitlines()) == 1
+    assert result.stdout.strip().split("  ", 1)[1] == relative.replace("\\", "/")

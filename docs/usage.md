@@ -77,6 +77,17 @@ hashio .git
 hashio .git --force
 ```
 
+## Console Paths
+
+Checksum lines follow the input's path style: relative inputs produce relative
+paths (including `../`), and absolute inputs produce absolute paths. This applies
+to literal files, wildcard matches, verbose sequence frames, and files found
+inside directories. Overlapping selections use the first input's path style.
+Sequence aggregate labels preserve the original compressed reference.
+
+`--start` controls manifest paths independently; it does not rewrite console
+paths. Path separators in per-file console output use forward slashes.
+
 ## Portable Paths
 
 To store manifest paths relative to the output file location:

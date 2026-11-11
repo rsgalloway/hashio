@@ -487,6 +487,7 @@ def main(argv=None):
             paths=paths,
             results=results,
             display_paths=selection.files,
+            console_roots=selection.console_roots,
             outfile=args_dict["outfile"],
             procs=args_dict["procs"],
             start=args_dict["start"],
