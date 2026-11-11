@@ -41,6 +41,8 @@ worker.run()
 ```
 
 `resolve_inputs` accepts literal paths, pyseq references, and wildcards, returning
-unique absolute paths. `HashWorker.paths` selects inputs for a shared pool;
+unique absolute paths for per-file hashing. Use `resolve_selection` from the same
+module to retain sequence groups in its `sequences` mapping, as the CLI does
+when computing aggregate checksums. `HashWorker.paths` selects inputs for a shared pool;
 `path` supplies the scan label and snapshot root. Put process-starting code under
 `if __name__ == "__main__":` when calling it from a Python script.

@@ -40,7 +40,7 @@ import queue
 import time
 import uuid
 from multiprocessing import Event, Lock, Pool, Queue, Value
-from typing import Iterable, Optional, Union
+from typing import Iterable, MutableMapping, Optional, Union
 
 from hashio import config, utils
 from hashio.cache import Cache
@@ -123,6 +123,8 @@ class HashWorker:
         uncompress: bool = False,
         use_cache: bool = config.DEFAULT_USE_CACHE,
         paths: Optional[Iterable[Union[str, os.PathLike]]] = None,
+        results: Optional[MutableMapping[str, str]] = None,
+        display_paths: Optional[Iterable[str]] = None,
     ) -> None:
         """Initializes a HashWorker instance.
 
@@ -138,9 +140,15 @@ class HashWorker:
         :param uncompress: hash decompressed contents of gzip files
         :param use_cache: enable SQLite cache lookups and writes
         :param paths: resolved files/directories to hash; defaults to ``[path]``
+        :param results: optional process-safe mapping receiving per-file checksums
+        :param display_paths: files to print even when verbose output is disabled
         """
         self.path = path
         self.paths = list(paths) if paths is not None else [path]
+        self.results = results
+        self.display_paths = {
+            os.path.normcase(os.path.abspath(p)) for p in (display_paths or [])
+        }
         self.algo = algo
         self.buffer_size = utils.get_buffer_size(path=path)
         self.outfile = outfile
@@ -284,7 +292,11 @@ class HashWorker:
                 return
 
         # print the result if verbose mode is enabled
-        if self.verbose >= 2 or (self.verbose == 1 and not cached_hash):
+        if (
+            self.verbose >= 2
+            or (self.verbose == 1 and not cached_hash)
+            or os.path.normcase(os.path.abspath(path)) in self.display_paths
+        ):
             print(f"{value}  {normalized_path} {extra}")
 
         # write the result to the output file if required
@@ -317,6 +329,9 @@ class HashWorker:
             # Keep each manifest record intact when multiple workers append.
             with self.lock:
                 self.exporter.write(normalized_path, metadata)
+
+        if self.results is not None:
+            self.results[os.path.abspath(path)] = value
 
     def write(self, data: dict):
         """Write hash result to this worker's temp cache."""

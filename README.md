@@ -42,10 +42,11 @@ hashio <PATH> -o hash.json
 hashio --verify hash.json
 ```
 
-Hash an image sequence (quote the reference so the shell passes it unchanged):
+Hash an image sequence as one aggregate (quote the reference so the shell passes it unchanged):
 
 ```bash
-hashio 'frames/shot.%08d.png' -o hashes.json --start frames
+hashio 'frames/shot.%08d.png'
+hashio 'frames/shot.%08d.png' -v
 hashio 'frames/shot.%08d.png 1001-1010' -o hashes.json --start frames
 ```
 

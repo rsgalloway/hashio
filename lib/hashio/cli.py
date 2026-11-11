@@ -431,10 +431,11 @@ def main(argv=None):
         return 0
 
     args_dict = vars(args).copy()
-    from hashio.inputs import resolve_inputs
+    from hashio.inputs import resolve_selection
 
     try:
-        paths = resolve_inputs(args_dict.pop("path"))
+        selection = resolve_selection(args_dict.pop("path"))
+        paths = selection.paths
     except ValueError as error:
         print(str(error), file=sys.stderr)
         return 2
@@ -448,9 +449,31 @@ def main(argv=None):
     worker_threads = []
     workers = []
 
-    verbose = 2 if all(os.path.isfile(p) for p in paths) else args_dict["verbose"]
+    if selection.sequences and args_dict["algo"] == "null":
+        print(
+            "Sequence aggregates require a checksum algorithm, not null",
+            file=sys.stderr,
+        )
+        return 2
+
+    verbose = args_dict["verbose"]
+    if (not selection.sequences and all(os.path.isfile(p) for p in paths)) or (
+        selection.sequences and verbose
+    ):
+        verbose = 2
+
+    # Keep only a proxy in the worker so spawn/forkserver can serialize it.
+    manager = None
+    results = None
+    sequence_hashes = {}
 
     try:
+        if selection.sequences:
+            from multiprocessing import Manager
+
+            manager = Manager()
+            results = manager.dict()
+
         # One pool and exporter for the entire selection, including sequences.
         path = paths[0]
         if len(paths) > 1:
@@ -462,6 +485,8 @@ def main(argv=None):
         worker = HashWorker(
             path=path,
             paths=paths,
+            results=results,
+            display_paths=selection.files,
             outfile=args_dict["outfile"],
             procs=args_dict["procs"],
             start=args_dict["start"],
@@ -474,7 +499,7 @@ def main(argv=None):
         )
         workers.append(worker)
 
-        if not verbose and sys.stdout.isatty():
+        if not verbose and not selection.sequences and sys.stdout.isatty():
             progress_threads.append(start_progress_thread(worker))
 
         thread = threading.Thread(target=worker.run)
@@ -499,7 +524,14 @@ def main(argv=None):
         return 130
 
     finally:
-        if len(paths) > 1 and not (args.verbose or args.summarize):
+        if manager is not None:
+            sequence_hashes = dict(results)
+            manager.shutdown()
+        if (
+            not selection.sequences
+            and len(paths) > 1
+            and not (args.verbose or args.summarize)
+        ):
             print("")
 
         if args.summarize:
@@ -520,6 +552,29 @@ def main(argv=None):
                 if total_time
                 else "  Avg MB/s:    N/A"
             )
+
+    if selection.sequences:
+        from hashio.encoder import composite_hash
+
+        aggregates = []
+        for reference, frames in selection.sequences.items():
+            missing = [frame for frame in frames if not sequence_hashes.get(frame)]
+            if missing:
+                print(
+                    "Cannot aggregate {}: {} frame(s) were not hashed (missing, "
+                    "ignored, unreadable, or selected as output)".format(
+                        reference, len(missing)
+                    ),
+                    file=sys.stderr,
+                )
+                return 2
+            entries = [
+                (os.path.basename(frame), sequence_hashes[frame]) for frame in frames
+            ]
+            aggregate = composite_hash(entries, get_encoder_class(args_dict["algo"])())
+            aggregates.append((reference, aggregate))
+        for reference, aggregate in aggregates:
+            print("{}  {}".format(aggregate, reference))
 
     return 0
 
