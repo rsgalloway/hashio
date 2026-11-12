@@ -670,7 +670,8 @@ class TestShutdown(unittest.TestCase):
         worker.start_time = 0.0
         worker.path = "dummy"
         worker.done = threading.Event()
-        worker.add_path_to_queue = lambda path: None
+        worker.paths = [worker.path]
+        worker.add_to_queue = lambda data: None
 
         class DummyPool:
             def close(self):
