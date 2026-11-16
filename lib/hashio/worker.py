@@ -354,9 +354,18 @@ class HashWorker:
                 )
                 self.pending -= 1
 
-        # periodically merge into the main cache
-        elif time.time() - self.last_execution_time >= self.merge_interval:
-            self.merge()
+        # periodically merge this process's temp cache into the main cache;
+        # other processes' temp dbs are still being written, so finish()
+        # merges and removes all of them once the pool has exited
+        elif (
+            self.temp_cache
+            and time.time() - self.last_execution_time >= self.merge_interval
+        ):
+            with self.lock:
+                self.temp_cache.commit()
+                main_cache = Cache()
+                main_cache.merge(self.temp_db_path)
+                main_cache.close()
             self.last_execution_time = time.time()
 
         with self.progress.get_lock():
