@@ -50,6 +50,9 @@ hashio 'frames/shot.%08d.png' -v
 hashio 'frames/shot.%08d.png 1001-1010' -o hashes.json --start frames
 ```
 
+Sequence aggregate output includes the selected frame range, even when the input
+omits it. Gaps are preserved, for example `frames/shot.%08d.png [1-3, 5]`.
+
 You can also run it directly with `uvx`:
 
 ```bash
