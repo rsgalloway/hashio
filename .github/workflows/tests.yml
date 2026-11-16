@@ -22,7 +22,8 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - ubuntu-latest
+          # Python 3.8 and 3.9 builds are available for Ubuntu 24.04.
+          - ubuntu-24.04
           - macos-latest
           - windows-latest
         python-version:
