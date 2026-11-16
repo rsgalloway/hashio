@@ -40,7 +40,7 @@ import queue
 import time
 import uuid
 from multiprocessing import Event, Lock, Pool, Queue, Value
-from typing import Iterable, Mapping, MutableMapping, NamedTuple, Optional, Union
+from typing import Iterable, Mapping, NamedTuple, Optional, Union
 
 from hashio import config, utils
 from hashio.cache import Cache
@@ -135,7 +135,6 @@ class HashWorker:
         uncompress: bool = False,
         use_cache: bool = config.DEFAULT_USE_CACHE,
         paths: Optional[Iterable[Union[str, os.PathLike]]] = None,
-        results: Optional[MutableMapping[str, str]] = None,
         display_paths: Optional[Iterable[str]] = None,
         console_roots: Optional[Mapping[str, str]] = None,
         result_queue=None,
@@ -155,7 +154,6 @@ class HashWorker:
         :param uncompress: hash decompressed contents of gzip files
         :param use_cache: enable SQLite cache lookups and writes
         :param paths: resolved files/directories to hash; defaults to ``[path]``
-        :param results: optional process-safe mapping receiving per-file checksums
         :param display_paths: files to print even when verbose output is disabled
         :param console_roots: scan roots mapped to the original console path form
         :param result_queue: optional multiprocessing queue receiving a
@@ -173,7 +171,6 @@ class HashWorker:
             for root, (index, original) in self.console_roots.items()
             if os.path.isdir(root)
         ]
-        self.results = results
         self.result_queue = result_queue
         self.db = db
         self.display_paths = {
@@ -390,9 +387,6 @@ class HashWorker:
             # Keep each manifest record intact when multiple workers append.
             with self.lock:
                 self.exporter.write(normalized_path, metadata)
-
-        if self.results is not None:
-            self.results[os.path.abspath(path)] = value
 
         if self.result_queue is not None:
             self.result_queue.put(
