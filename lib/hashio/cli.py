@@ -36,34 +36,17 @@ Contains command line interface for hashio.
 import argparse
 import os
 import sys
-import threading
 import time
+from dataclasses import fields
 
 from tqdm import tqdm
 from datetime import datetime
 
 from hashio import __version__, config, utils
-from hashio.cache import Cache, SQLiteUnavailableError, require_sqlite_support
-from hashio.encoder import get_encoder_class, verify_caches, verify_checksums
-from hashio.worker import HashWorker
-
-
-def safe_join_thread(thread: threading.Thread, timeout: float = None):
-    """Join a thread while suppressing KeyboardInterrupt during shutdown."""
-    try:
-        thread.join(timeout=timeout)
-    except KeyboardInterrupt:
-        return False
-    return not thread.is_alive()
-
-
-def stop_workers(workers):
-    """Stop workers while suppressing repeated interrupts during cleanup."""
-    for worker in workers:
-        try:
-            worker.stop()
-        except KeyboardInterrupt:
-            continue
+from hashio.api import Hashio, common_root
+from hashio.cache import SQLiteUnavailableError, require_sqlite_support
+from hashio.encoder import get_encoder_class
+from hashio.inputs import resolve_selection
 
 
 def format_result(row):
@@ -194,6 +177,12 @@ def parse_args(argv=None):
         help="Query cache for path",
     )
     parser.add_argument(
+        "--db",
+        metavar="DB",
+        help="cache database path (default %s)" % config.DEFAULT_DB_PATH,
+        default=config.DEFAULT_DB_PATH,
+    )
+    parser.add_argument(
         "--merge",
         metavar="CACHE",
         help="Merge another cache database into the current one",
@@ -240,76 +229,8 @@ def parse_args(argv=None):
     return args
 
 
-def start_progress_thread(
-    worker: HashWorker, position: int = 0, update_interval: float = 0.2
-):
-    """Start a thread to monitor worker progress and update tqdm with MB/sec.
-
-    :param worker: The HashWorker instance to monitor.
-    :param update_interval: How often to update the progress bar (in seconds).
-    :return: The thread that updates the progress bar.
-    """
-
-    pbar = tqdm(
-        desc=worker.path,
-        unit="B",  # base unit
-        unit_scale=True,  # auto-scale (KB, MB, GB...)
-        unit_divisor=1024,  # use 1024-based units (KiB, MiB)
-        smoothing=0.1,
-        position=position,
-        dynamic_ncols=True,
-        leave=True,
-    )
-
-    last_time = time.time()
-    last_files = worker.progress_count()
-
-    def watch():
-        nonlocal last_time, last_files
-
-        # wait for worker done event with a timeout
-        while not worker.done.wait(timeout=update_interval):
-            now = time.time()
-            files_now = worker.progress_count()
-            bytes_now = worker.progress_bytes()
-
-            elapsed = now - last_time
-            file_delta = files_now - last_files
-            files_per_sec = file_delta / elapsed if elapsed > 0 else 0
-
-            # tqdm expects raw byte count for n
-            pbar.n = bytes_now
-            filename = os.path.basename(worker.progress_filename())[:50]
-            pbar.set_postfix(
-                {
-                    "files/s": f"{files_per_sec:.2f}",
-                    "file": filename,
-                }
-            )
-
-            pbar.refresh()
-            last_time = now
-            last_files = files_now
-            time.sleep(update_interval)
-
-        # final update
-        pbar.n = worker.progress_bytes()
-        pbar.set_postfix(
-            {
-                "files/s": f"0.00",
-            }
-        )
-        pbar.refresh()
-        # avoid closing the progress bar immediately
-        # pbar.close()
-
-    thread = threading.Thread(target=watch, daemon=True)
-    thread.start()
-    return thread
-
-
 def main(argv=None):
-    """Main thread."""
+    """Parse arguments, run the matching Hashio method, and print its results."""
 
     args = parse_args(argv)
     if args.snapshot:
@@ -334,28 +255,28 @@ def main(argv=None):
         print(str(e), file=sys.stderr)
         return 2
 
+    # CLI argument names match the Hashio setting names
+    hio = Hashio(**{f.name: getattr(args, f.name) for f in fields(Hashio)})
+
     # validate and update the cache
     if args.update_cache:
-        cache = Cache()
-        cache._ensure_db()
-        cache.close()
+        hio.update_cache()
         print("Cache DB updated.")
         return 0
 
     # merge another cache into the current one
     elif args.merge:
-        if not os.path.exists(args.merge):
-            print(f"Cache file not found: {args.merge}")
+        try:
+            hio.merge(args.merge)
+        except FileNotFoundError as e:
+            print(e)
             return 2
-        cache = Cache()
-        cache.merge(args.merge)
-        print(f"Merged into {cache.db_path}")
+        print(f"Merged into {os.path.abspath(hio.db)}")
         return 0
 
     # query cache or list all entries
     elif args.query:
-        cache = Cache()
-        results = cache.query(args.query, args.algo, args.since)
+        results = list(hio.query(args.query, args.since))
         if results:
             print(f"{'timestamp':<20} {'inode':<10} {'hash':<35} path")
             for row in results:
@@ -366,8 +287,7 @@ def main(argv=None):
 
     # list all snapshots
     elif args.list_snapshots:
-        cache = Cache()
-        snapshots = cache.list_snapshots()
+        snapshots = list(hio.list_snapshots())
         if snapshots:
             for snap in snapshots:
                 ts = datetime.fromtimestamp(snap["created_at"]).isoformat()
@@ -378,32 +298,10 @@ def main(argv=None):
 
     # diff two snapshots
     elif args.diff:
-        cache = Cache()
-
-        # common root path for comparing diffs
-        start_root = os.path.abspath(args.start or os.getcwd())
-        diff = cache.diff_snapshots(args.diff[0], args.diff[1], force=args.force)
-
-        def is_under_root(path, root):
-            try:
-                return os.path.commonpath([os.path.abspath(path), root]) == root
-            except ValueError:
-                # handles cases like windows drive mismatch
-                return False
-
-        # filter paths by start_root if provided
-        for k in diff:
-            diff[k] = [p for p in diff[k] if is_under_root(p, start_root)]
-
-        for path in diff["added"]:
-            print(f"+ {path}")
-        for path in diff["removed"]:
-            print(f"- {path}")
-        for path in diff["changed"]:
-            print(f"~ {path}")
-
-        cache.close()
-        sys.exit(0)
+        symbols = {"added": "+", "removed": "-", "changed": "~"}
+        for change, path in hio.diff(*args.diff):
+            print(f"{symbols[change]} {path}")
+        return 0
 
     # hash verification
     if args.verify is not None:
@@ -411,123 +309,93 @@ def main(argv=None):
             if not os.path.exists(config.CACHE_FILENAME):
                 print(f"file not found: {config.CACHE_FILENAME}")
                 return 0
-            for algo, value, miss in verify_checksums(
-                config.CACHE_FILENAME, start=args.start, uncompress=args.uncompress
-            ):
+            for algo, value, miss in hio.verify(config.CACHE_FILENAME):
                 print("{0} {1}".format(algo, miss))
         elif len(args.verify) == 1:
-            for algo, value, miss in verify_checksums(
-                args.verify[0], start=args.start, uncompress=args.uncompress
-            ):
+            for algo, value, miss in hio.verify(args.verify[0]):
                 print("{0} {1}".format(algo, miss))
         elif len(args.verify) == 2:
-            source = args.verify[0]
-            other = args.verify[1]
-            for algo, value, miss in verify_caches(source, other):
+            for algo, value, miss in hio.verify(*args.verify):
                 print("{0} {1}".format(value, miss))
         else:
             print("incorrect number of arguments for --verify")
             return 2
         return 0
 
-    args_dict = vars(args).copy()
-    from hashio.inputs import resolve_selection
-
+    # resolved here too, to decide what to print
     try:
-        selection = resolve_selection(args_dict.pop("path"))
-        paths = selection.paths
+        selection = resolve_selection(args.path)
     except ValueError as error:
         print(str(error), file=sys.stderr)
         return 2
+    paths = selection.paths
 
     # validate algorithm
-    if not get_encoder_class(args_dict["algo"]):
-        print(f"Unsupported algorithm: {args_dict['algo']}")
+    if not get_encoder_class(args.algo):
+        print(f"Unsupported algorithm: {args.algo}")
         return 2
 
-    progress_threads = []
-    worker_threads = []
-    workers = []
-
-    if selection.sequences and args_dict["algo"] == "null":
+    if selection.sequences and args.algo == "null":
         print(
             "Sequence aggregates require a checksum algorithm, not null",
             file=sys.stderr,
         )
         return 2
 
-    verbose = args_dict["verbose"]
+    verbose = args.verbose
     if (not selection.sequences and all(os.path.isfile(p) for p in paths)) or (
         selection.sequences and verbose
     ):
         verbose = 2
+    explicit = {os.path.normcase(p) for p in selection.files}
 
-    # Keep only a proxy in the worker so spawn/forkserver can serialize it.
-    manager = None
-    results = None
-    sequence_hashes = {}
-
-    try:
-        if selection.sequences:
-            from multiprocessing import Manager
-
-            manager = Manager()
-            results = manager.dict()
-
-        # One pool and exporter for the entire selection, including sequences.
-        path = paths[0]
-        if len(paths) > 1:
-            roots = [p if os.path.isdir(p) else os.path.dirname(p) for p in paths]
-            try:
-                path = os.path.commonpath(roots)
-            except ValueError:  # Inputs on different Windows drives.
-                path = os.getcwd()
-        worker = HashWorker(
-            path=path,
-            paths=paths,
-            results=results,
-            display_paths=selection.files,
-            console_roots=selection.console_roots,
-            outfile=args_dict["outfile"],
-            procs=args_dict["procs"],
-            start=args_dict["start"],
-            algo=args_dict["algo"],
-            snapshot=args_dict["snapshot"],
-            force=args_dict["force"],
-            verbose=verbose,
-            uncompress=args_dict["uncompress"],
-            use_cache=args_dict["use_cache"],
+    pbar = None
+    if not verbose and not selection.sequences and sys.stdout.isatty():
+        pbar = tqdm(
+            desc=common_root(paths),
+            unit="B",
+            unit_scale=True,
+            unit_divisor=1024,
+            smoothing=0.1,
+            dynamic_ncols=True,
+            leave=True,
         )
-        workers.append(worker)
 
-        if not verbose and not selection.sequences and sys.stdout.isatty():
-            progress_threads.append(start_progress_thread(worker))
-
-        thread = threading.Thread(target=worker.run)
-        thread.start()
-        worker_threads.append(thread)
-
-        # wait for workers to finish
-        while any(t.is_alive() for t in worker_threads):
-            # wait for all workers to finish
-            for t in worker_threads:
-                safe_join_thread(t, timeout=0.2)
-
-            # now wait for progress threads to exit
-            for t in progress_threads:
-                safe_join_thread(t, timeout=0.2)
+    total_files = total_bytes = 0
+    aggregates = []
+    error = None
+    start_time = time.time()
+    results = hio.hash(*args.path)
+    try:
+        for result in results:
+            if result.kind == "sequence":
+                aggregates.append(result)
+                continue
+            total_files += 1
+            total_bytes += result.size
+            if pbar is not None:
+                pbar.update(result.size)
+                pbar.set_postfix(file=os.path.basename(result.path)[:50])
+            if (
+                verbose >= 2
+                or (verbose == 1 and not result.cached)
+                or os.path.normcase(result.path) in explicit
+            ):
+                extra = "(cached)" if result.cached else ""
+                print(f"{result.value}  {result.display} {extra}".rstrip())
 
     except KeyboardInterrupt:
-        stop_workers(workers)
-        for t in progress_threads:
-            safe_join_thread(t, timeout=0.2)
+        results.close()
         print("stopping...")
         return 130
 
+    except ValueError as e:
+        error = e
+
     finally:
-        if manager is not None:
-            sequence_hashes = dict(results)
-            manager.shutdown()
+        total_time = time.time() - start_time
+        if pbar is not None:
+            pbar.refresh()
         if (
             not selection.sequences
             and len(paths) > 1
@@ -536,10 +404,6 @@ def main(argv=None):
             print("")
 
         if args.summarize:
-            total_files = sum(w.progress_count() for w in workers)
-            total_bytes = sum(w.progress_bytes() for w in workers)
-            total_time = sum(w.total_time for w in workers if hasattr(w, "total_time"))
-
             print(f"total files: {total_files}")
             print(f"total bytes: {utils.format_bytes(total_bytes)}")
             print(f"total time:  {total_time:.2f} seconds")
@@ -554,28 +418,12 @@ def main(argv=None):
                 else "  Avg MB/s:    N/A"
             )
 
-    if selection.sequences:
-        from hashio.encoder import composite_hash
+    if error is not None:
+        print(str(error), file=sys.stderr)
+        return 2
 
-        aggregates = []
-        for reference, frames in selection.sequences.items():
-            missing = [frame for frame in frames if not sequence_hashes.get(frame)]
-            if missing:
-                print(
-                    "Cannot aggregate {}: {} frame(s) were not hashed (missing, "
-                    "ignored, unreadable, or selected as output)".format(
-                        reference, len(missing)
-                    ),
-                    file=sys.stderr,
-                )
-                return 2
-            entries = [
-                (os.path.basename(frame), sequence_hashes[frame]) for frame in frames
-            ]
-            aggregate = composite_hash(entries, get_encoder_class(args_dict["algo"])())
-            aggregates.append((reference, aggregate))
-        for reference, aggregate in aggregates:
-            print("{}  {}".format(aggregate, reference))
+    for result in aggregates:
+        print("{}  {}".format(result.value, result.path))
 
     return 0
 

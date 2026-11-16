@@ -10,7 +10,7 @@ import sys
 def reload_hashio_modules():
     """Reload hashio config-dependent modules after env changes."""
     for name in list(sys.modules):
-        if name in {"hashio.config", "hashio.cli", "hashio.worker"}:
+        if name in {"hashio.config", "hashio.cli", "hashio.worker", "hashio.api"}:
             sys.modules.pop(name)
 
     importlib.import_module("hashio")
@@ -71,7 +71,7 @@ def test_main_disables_cache_by_default(monkeypatch, tmp_path):
         def progress_bytes(self):
             return 0
 
-    monkeypatch.setattr(cli, "HashWorker", DummyWorker)
+    monkeypatch.setattr(sys.modules["hashio.api"], "HashWorker", DummyWorker)
     monkeypatch.setattr(cli, "get_encoder_class", lambda algo: object())
 
     assert cli.main([str(path)]) == 0
@@ -103,7 +103,7 @@ def test_main_enables_cache_for_snapshot(monkeypatch, tmp_path):
         def progress_bytes(self):
             return 0
 
-    monkeypatch.setattr(cli, "HashWorker", DummyWorker)
+    monkeypatch.setattr(sys.modules["hashio.api"], "HashWorker", DummyWorker)
     monkeypatch.setattr(cli, "get_encoder_class", lambda algo: object())
 
     assert cli.main(["--snapshot", "snap1", str(path)]) == 0
@@ -128,6 +128,7 @@ def test_merge_drains_temp_db_queue(monkeypatch, tmp_path):
 
     worker = HashWorker.__new__(HashWorker)
     worker.use_cache = True
+    worker.db = os.fspath(tmp_path / "main.sql")
     worker.temp_cache = None
     worker.lock = multiprocessing.Lock()
     worker.temp_db_queue = queue.Queue()
@@ -184,7 +185,7 @@ def test_cli_hashing_without_cache_does_not_require_sqlite(monkeypatch, tmp_path
         def progress_bytes(self):
             return 0
 
-    monkeypatch.setattr(cli, "HashWorker", DummyWorker)
+    monkeypatch.setattr(sys.modules["hashio.api"], "HashWorker", DummyWorker)
     monkeypatch.setattr(cli, "get_encoder_class", lambda algo: object())
 
     assert cli.main([str(path)]) == 0

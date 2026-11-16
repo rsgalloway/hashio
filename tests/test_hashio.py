@@ -602,41 +602,6 @@ class TestUncompress(unittest.TestCase):
 class TestShutdown(unittest.TestCase):
     """Tests shutdown and interrupt helpers."""
 
-    def test_safe_join_thread_suppresses_keyboard_interrupt(self):
-        from hashio.cli import safe_join_thread
-
-        class DummyThread:
-            def join(self, timeout=None):
-                raise KeyboardInterrupt()
-
-            def is_alive(self):
-                return True
-
-        self.assertFalse(safe_join_thread(DummyThread(), timeout=0.1))
-
-    def test_stop_workers_suppresses_keyboard_interrupt(self):
-        from hashio.cli import stop_workers
-
-        calls = []
-
-        class DummyWorker:
-            def __init__(self, name, should_interrupt=False):
-                self.name = name
-                self.should_interrupt = should_interrupt
-
-            def stop(self):
-                calls.append(self.name)
-                if self.should_interrupt:
-                    raise KeyboardInterrupt()
-
-        stop_workers(
-            [
-                DummyWorker("first", should_interrupt=True),
-                DummyWorker("second"),
-            ]
-        )
-        self.assertEqual(calls, ["first", "second"])
-
     def test_hashworker_stop_sets_done_before_finish(self):
         from hashio.worker import HashWorker
 

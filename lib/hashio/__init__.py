@@ -36,3 +36,15 @@ Custom file and directory checksum tool.
 __author__ = "ryan@rsgalloway.com"
 __prog__ = "hashio"
 __version__ = "0.5.3"
+
+
+_API = ("Hashio", "Result")
+
+
+def __getattr__(name):
+    """Lazily expose the high-level API so the CLI import path stays light."""
+    if name in _API:
+        from hashio import api
+
+        return getattr(api, name)
+    raise AttributeError(f"module 'hashio' has no attribute {name!r}")
