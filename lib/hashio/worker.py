@@ -40,7 +40,7 @@ import queue
 import time
 import uuid
 from multiprocessing import Event, Lock, Pool, Queue, Value
-from typing import Iterable, Mapping, MutableMapping, Optional, Union
+from typing import Iterable, Mapping, NamedTuple, Optional, Union
 
 from hashio import config, utils
 from hashio.cache import Cache
@@ -61,6 +61,18 @@ CURRENT_FILE_BUFFER_SIZE = 512
 
 # cache the current working directory
 CWD = os.getcwd()
+
+
+class Result(NamedTuple):
+    """One hashed file, or a sequence aggregate when ``kind == "sequence"``."""
+
+    path: str  # absolute file path, or the sequence reference
+    value: str
+    algo: str
+    size: int
+    cached: bool
+    display: str  # path in the form it was given on input
+    kind: str = "file"
 
 
 def get_encoder(algo: str):
@@ -123,9 +135,10 @@ class HashWorker:
         uncompress: bool = False,
         use_cache: bool = config.DEFAULT_USE_CACHE,
         paths: Optional[Iterable[Union[str, os.PathLike]]] = None,
-        results: Optional[MutableMapping[str, str]] = None,
         display_paths: Optional[Iterable[str]] = None,
         console_roots: Optional[Mapping[str, str]] = None,
+        result_queue=None,
+        db: str = config.DEFAULT_DB_PATH,
     ) -> None:
         """Initializes a HashWorker instance.
 
@@ -141,9 +154,11 @@ class HashWorker:
         :param uncompress: hash decompressed contents of gzip files
         :param use_cache: enable SQLite cache lookups and writes
         :param paths: resolved files/directories to hash; defaults to ``[path]``
-        :param results: optional process-safe mapping receiving per-file checksums
         :param display_paths: files to print even when verbose output is disabled
         :param console_roots: scan roots mapped to the original console path form
+        :param result_queue: optional multiprocessing queue receiving a
+            :class:`Result` per hashed file
+        :param db: cache database path
         """
         self.path = path
         self.paths = list(paths) if paths is not None else [path]
@@ -156,7 +171,8 @@ class HashWorker:
             for root, (index, original) in self.console_roots.items()
             if os.path.isdir(root)
         ]
-        self.results = results
+        self.result_queue = result_queue
+        self.db = db
         self.display_paths = {
             os.path.normcase(os.path.abspath(p)) for p in (display_paths or [])
         }
@@ -187,8 +203,9 @@ class HashWorker:
         self.start = start or os.getcwd()
         self.exporter = get_exporter(outfile)
         self.queue = Queue()  # task queue
-        self.pool = Pool(self.procs, HashWorker.main, (self,))
+        # created before the pool so worker processes share it
         self.done = Event()
+        self.pool = Pool(self.procs, HashWorker.main, (self,))
 
     def __str__(self):
         """Returns a string representation of the worker."""
@@ -223,7 +240,7 @@ class HashWorker:
         logger.debug("Exploring path %s", path)
         logger.debug("Using read buffer size: %s", self.buffer_size)
         if self.use_cache:
-            logger.debug("Using database: %s", config.DEFAULT_DB_PATH)
+            logger.debug("Using database: %s", self.db)
         self.explore_paths([path])
 
     def explore_paths(self, paths: Iterable[Union[str, os.PathLike]]) -> None:
@@ -237,6 +254,8 @@ class HashWorker:
         )
         for path in paths:
             for filename in utils.walk(path, filetype="f", force=self.force):
+                if self.done.is_set():  # cancelled
+                    return
                 key = os.path.normcase(os.path.abspath(filename))
                 if key == output or key in seen:
                     continue
@@ -283,7 +302,7 @@ class HashWorker:
         if self.use_cache:
             # get the global cache instance
             with self.lock:
-                cache = Cache()
+                cache = Cache(self.db)
 
         # normalize the path for consistent output
         normalized_path = get_output_path(
@@ -369,8 +388,17 @@ class HashWorker:
             with self.lock:
                 self.exporter.write(normalized_path, metadata)
 
-        if self.results is not None:
-            self.results[os.path.abspath(path)] = value
+        if self.result_queue is not None:
+            self.result_queue.put(
+                Result(
+                    os.path.abspath(path),
+                    value,
+                    self.algo,
+                    size,
+                    bool(cached_hash),
+                    self.console_path(path),
+                )
+            )
 
     def write(self, data: dict):
         """Write hash result to this worker's temp cache."""
@@ -447,7 +475,7 @@ class HashWorker:
 
         # merge the temporary caches into the main cache
         with self.lock:
-            main_cache = Cache()
+            main_cache = Cache(self.db)
 
         merged_paths = set()
 
@@ -470,6 +498,9 @@ class HashWorker:
 
     def finish(self):
         """Finalize worker resources."""
+        # the pool has exited; a process interrupted mid-acquire may still own
+        # the old lock, which would block this final merge forever
+        self.lock = Lock()
         try:
             self.merge()
         finally:
@@ -533,6 +564,10 @@ class HashWorker:
         """Worker function that walks folders and adds data to the queue."""
         while True:
             try:
+                if worker.done.is_set():
+                    # cancelled: exit without waiting to flush queued tasks
+                    worker.queue.cancel_join_thread()
+                    break
                 data = worker.queue.get(True, timeout=WAIT_TIME)
                 if data == -1:
                     break
@@ -550,6 +585,8 @@ class HashWorker:
             except queue.Empty:
                 break
             except (KeyboardInterrupt, EOFError):
+                # don't block process exit flushing tasks nobody will read
+                worker.queue.cancel_join_thread()
                 break  # clean exit
             except Exception as err:
                 logger.error(err)
