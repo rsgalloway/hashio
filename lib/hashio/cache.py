@@ -349,8 +349,14 @@ class Cache:
                 INSERT OR IGNORE INTO snapshots (name, created_at, path)
                 SELECT name, created_at, path FROM tempdb.snapshots;
 
+                -- ids differ between dbs: remap links by snapshot name and file key
                 INSERT OR IGNORE INTO snapshot_files (snapshot_id, file_id)
-                SELECT snapshot_id, file_id FROM tempdb.snapshot_files;
+                SELECT s.id, f.id FROM tempdb.snapshot_files tsf
+                JOIN tempdb.snapshots ts ON ts.id = tsf.snapshot_id
+                JOIN snapshots s ON s.name = ts.name
+                JOIN tempdb.files tf ON tf.id = tsf.file_id
+                JOIN files f ON f.path = tf.path AND f.mtime = tf.mtime
+                    AND f.algo = tf.algo;
             """
             )
             self.conn.commit()

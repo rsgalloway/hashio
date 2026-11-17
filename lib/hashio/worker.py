@@ -308,7 +308,8 @@ class HashWorker:
             metadata[self.algo] = cached_hash
             value = cached_hash
             extra = "(cached)"
-            do_write = False
+            # cached files still need linking to the snapshot
+            do_write = bool(self.snapshot)
         else:
             extra = ""
             do_write = True
@@ -353,9 +354,18 @@ class HashWorker:
                 )
                 self.pending -= 1
 
-        # periodically merge into the main cache
-        elif time.time() - self.last_execution_time >= self.merge_interval:
-            self.merge()
+        # periodically merge this process's temp cache into the main cache;
+        # other processes' temp dbs are still being written, so finish()
+        # merges and removes all of them once the pool has exited
+        elif (
+            self.temp_cache
+            and time.time() - self.last_execution_time >= self.merge_interval
+        ):
+            with self.lock:
+                self.temp_cache.commit()
+                main_cache = Cache()
+                main_cache.merge(self.temp_db_path)
+                main_cache.close()
             self.last_execution_time = time.time()
 
         with self.progress.get_lock():
@@ -403,7 +413,10 @@ class HashWorker:
 
         snapshot_id = None
         if self.snapshot and self.temp_cache:
-            snapshot_id = self.temp_cache.replace_snapshot(self.snapshot, self.path)
+            # temp cache is per-process and fresh; replacing here would drop earlier links
+            snapshot_id = self.temp_cache.get_or_create_snapshot(
+                self.snapshot, self.path
+            )
 
         snapshot_file_ids = []
 
@@ -485,7 +498,14 @@ class HashWorker:
     def run(self):
         """Runs the worker."""
         self.start_time = time.time()
+        # queue work first: idle pool workers exit after WAIT_TIME
         self.add_to_queue({"task": "search_paths", "paths": self.paths})
+        if self.snapshot and self.use_cache:
+            # replace the named snapshot once; snapshot runs only merge into
+            # the main cache in finish(), so this still lands before any links
+            main_cache = Cache()
+            main_cache.replace_snapshot(self.snapshot, self.path)
+            main_cache.close()
 
         try:
             self.pool.close()

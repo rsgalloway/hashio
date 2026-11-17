@@ -669,6 +669,8 @@ class TestShutdown(unittest.TestCase):
         worker = HashWorker.__new__(HashWorker)
         worker.start_time = 0.0
         worker.path = "dummy"
+        worker.snapshot = None
+        worker.use_cache = False
         worker.done = threading.Event()
         worker.paths = [worker.path]
         worker.add_to_queue = lambda data: None
