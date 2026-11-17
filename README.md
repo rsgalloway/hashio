@@ -69,3 +69,5 @@ Detailed documentation now lives under [docs/](docs/):
 - [Configuration](docs/configuration.md)
 - [Cache and Snapshots](docs/cache-and-snapshots.md)
 - [Python API](docs/python-api.md)
+
+For performance comparisons and PR checks, see [Benchmarks](docs/benchmarks.md).
