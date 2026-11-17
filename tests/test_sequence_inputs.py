@@ -239,7 +239,7 @@ def expected_aggregate(directory: Path, numbers: List[int]) -> str:
 
 
 def test_cli_sequence_default_aggregate(frames: Path, tmp_path: Path) -> None:
-    """Print the aggregate alongside the original compressed sequence reference.
+    """Print the aggregate alongside the sequence reference and resolved range.
 
     :param frames: directory containing frame fixtures
     :param tmp_path: subprocess working directory
@@ -248,7 +248,7 @@ def test_cli_sequence_default_aggregate(frames: Path, tmp_path: Path) -> None:
     result = run_cli([reference, "-a", "md5", "-p", "2"], tmp_path)
     assert result.returncode == 0, result.stderr
     assert result.stdout == "{}  {}\n".format(
-        expected_aggregate(frames, [1, 2, 3, 5]), reference
+        expected_aggregate(frames, [1, 2, 3, 5]), reference + " [1-3, 5]"
     )
 
 
@@ -264,7 +264,8 @@ def test_cli_verbose_sequence_and_wildcard(frames: Path, tmp_path: Path) -> None
     lines = verbose.stdout.strip().splitlines()
     assert len(lines) == 5
     assert lines[-1] == "{}  {}".format(
-        expected_aggregate(frames, [1, 2, 3, 5]), frames / "shot.%08d.png"
+        expected_aggregate(frames, [1, 2, 3, 5]),
+        str(frames / "shot.%08d.png") + " [1-3, 5]",
     )
     assert {line.split("  ", 1)[1] for line in lines[:-1]} == {
         (frames / ("shot.%08d.png" % frame)).as_posix() for frame in (1, 2, 3, 5)
@@ -379,7 +380,8 @@ def test_cli_cached_sequence_aggregate(frames: Path, tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert result.stdout.count("(cached)") == 4
     assert result.stdout.strip().splitlines()[-1] == "{}  {}".format(
-        expected_aggregate(frames, [1, 2, 3, 5]), frames / "shot.%08d.png"
+        expected_aggregate(frames, [1, 2, 3, 5]),
+        str(frames / "shot.%08d.png") + " [1-3, 5]",
     )
 
 
@@ -426,7 +428,7 @@ def test_cli_console_path_style(
     lines = result.stdout.strip().splitlines()
     if kind == "sequence":
         assert lines.pop() == "{}  {}".format(
-            expected_aggregate(frames, [1, 2, 3, 5]), reference
+            expected_aggregate(frames, [1, 2, 3, 5]), reference + " [1-3, 5]"
         )
     actual = {line.split("  ", 1)[1] for line in lines}
     names = {"shot.%08d.png" % number for number in (1, 2, 3, 5)}
@@ -453,3 +455,24 @@ def test_cli_duplicate_path_style_uses_first_input(
     assert result.returncode == 0, result.stderr
     assert len(result.stdout.strip().splitlines()) == 1
     assert result.stdout.strip().split("  ", 1)[1] == relative.replace("\\", "/")
+
+
+@pytest.mark.parametrize(
+    "numbers, expected_range", [([1], "[1]"), ([1, 2, 3], "[1-3]")]
+)
+def test_cli_sequence_resolved_range(
+    tmp_path: Path, numbers: List[int], expected_range: str
+) -> None:
+    """Include the actual range for single-frame and contiguous sequences.
+
+    :param tmp_path: directory for frame fixtures and subprocess execution
+    :param numbers: frame numbers to create and hash
+    :param expected_range: serialized range expected in the aggregate label
+    """
+    for number in numbers:
+        (tmp_path / ("shot.%08d.png" % number)).write_bytes(str(number).encode())
+    result = run_cli(["shot.%08d.png", "-a", "md5", "-p", "2"], tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "{}  shot.%08d.png {}\n".format(
+        expected_aggregate(tmp_path, numbers), expected_range
+    )

@@ -2,6 +2,7 @@
 
 import glob
 import os
+import re
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Union
 
@@ -17,7 +18,7 @@ class InputSelection:
     """Resolved inputs with explicit sequences retained as logical groups.
 
     :param paths: unique absolute paths to scan
-    :param sequences: original sequence references mapped to their frame paths
+    :param sequences: sequence references with ranges mapped to their frame paths
     :param files: explicitly selected non-sequence files for console output
     :param console_roots: absolute scan roots mapped to their original path form
     """
@@ -66,6 +67,17 @@ def resolve_selection(references: Iterable[Union[str, os.PathLike]]) -> InputSel
             if not matches:
                 raise FileNotFoundError("No matching files or directories")
             if is_sequence:
+                if parse_explicit_sequence_string(reference) is None:
+                    frame_range = sequence.format("%R")
+                    if not frame_range:
+                        # Pyseq does not assign frame metadata to singleton sequences.
+                        head, tail = re.split(
+                            r"%0?\d*d", os.path.basename(reference), maxsplit=1
+                        )
+                        name = sequence[0].name
+                        frame = int(name[len(head) : len(name) - len(tail)])
+                        frame_range = "[{}]".format(frame)
+                    reference = "{} {}".format(reference, frame_range)
                 sequences[reference] = [os.path.abspath(path) for path in matches]
             for path in matches:
                 original_path = path
