@@ -1,0 +1,134 @@
+name: Publish benchmark comparison
+
+on:
+  workflow_run:
+    workflows: [Benchmarks]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+
+concurrency:
+  group: benchmark-comment-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  comment:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # Inline code comes from the default-branch workflow; no PR checkout.
+      - name: Update benchmark comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const {execFileSync} = require('node:child_process');
+
+            const marker = '<!-- hashio-benchmark-comparison -->';
+            const scenarios = new Set(['small', 'large', 'verbose', 'sequence', 'cache-cold', 'cache-warm']);
+
+            function renderReport(report) {
+              if (report.schema_version !== 2 || !Number.isInteger(report.iterations) ||
+                  report.iterations < 1 || report.iterations > 100 ||
+                  [report.threshold_pct, report.threshold_seconds].some(x => typeof x !== 'number' || !Number.isFinite(x) || x < 0 || x > 1e6) ||
+                  !Array.isArray(report.results) || report.results.length !== 12) {
+                throw new Error('Unexpected benchmark report schema');
+              }
+              const rows = [];
+              const seen = new Set();
+              for (const row of report.results) {
+                const key = `${row.scenario}:${row.procs}`;
+                const numbers = [row.base_s, row.candidate_s, row.delta_pct,
+                                 row.mad_pct?.base, row.mad_pct?.candidate];
+                if (!scenarios.has(row.scenario) || ![1, 4].includes(row.procs) || seen.has(key) ||
+                    numbers.some(x => typeof x !== 'number' || !Number.isFinite(x) || Math.abs(x) > 1e6) ||
+                    row.base_s <= 0 || row.candidate_s <= 0 ||
+                    !Number.isInteger(row.slow_pairs) || row.slow_pairs < 0 || row.slow_pairs > report.iterations ||
+                    !['pass', 'inconclusive', 'REGRESSION'].includes(row.status)) {
+                  throw new Error('Invalid benchmark row');
+                }
+                seen.add(key);
+                // Only enums and validated numbers reach Markdown; artifact text is never copied.
+                rows.push(`| ${row.scenario} | ${row.procs} | ${row.base_s.toFixed(3)} | ${row.candidate_s.toFixed(3)} | ${row.delta_pct.toFixed(1)}% | ${row.mad_pct.base.toFixed(1)}% / ${row.mad_pct.candidate.toFixed(1)}% | ${row.slow_pairs}/${report.iterations} | ${row.status} |`);
+              }
+              return [
+                '| Workload | Workers | Base (s) | Candidate (s) | Paired change | MAD base/new | Slow pairs | Status |',
+                '|---|---:|---:|---:|---:|---:|---:|---|', ...rows,
+                '', `Gate: more than +${report.threshold_pct.toFixed(1)}% and +${report.threshold_seconds.toFixed(3)}s.`,
+                'Positive changes are slower. MAD shows timing dispersion; inconclusive results need review.',
+                'A regression requires both thresholds to be exceeded in the paired medians and at least 75% of pairs (minimum four samples).',
+              ].join('\n');
+            }
+
+            async function publish({github, context, core}) {
+              const {owner, repo} = context.repo;
+              const run = context.payload.workflow_run;
+              if (run.event !== 'pull_request' || run.path.split('@')[0] !== '.github/workflows/benchmarks.yml') return;
+
+              let candidates = run.pull_requests || [];
+              if (!candidates.length) {
+                candidates = await github.paginate(github.rest.repos.listPullRequestsAssociatedWithCommit,
+                  {owner, repo, commit_sha: run.head_sha, per_page: 100});
+              }
+              const pulls = [];
+              for (const candidate of candidates) {
+                const {data: pr} = await github.rest.pulls.get({owner, repo, pull_number: candidate.number});
+                if (pr.state === 'open' && pr.base.repo.full_name === `${owner}/${repo}` &&
+                    pr.head.sha === run.head_sha) pulls.push(pr);
+              }
+              if (!pulls.length) {
+                core.info('No current open PR matches this run; skipping stale/unassociated results.');
+                return;
+              }
+
+              let table = 'No complete benchmark report is available. Inspect the run logs before drawing performance conclusions.';
+              try {
+                const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts,
+                  {owner, repo, run_id: run.id, per_page: 100});
+                const artifact = artifacts.find(a => a.name === 'benchmark-results' && !a.expired);
+                if (artifact) {
+                  if (artifact.size_in_bytes > 2 * 1024 * 1024) throw new Error('Oversized artifact');
+                  const {data} = await github.rest.actions.downloadArtifact(
+                    {owner, repo, artifact_id: artifact.id, archive_format: 'zip'});
+                  const zip = path.join(process.env.RUNNER_TEMP, `benchmark-${run.id}.zip`);
+                  try {
+                    fs.writeFileSync(zip, Buffer.from(data));
+                    // Read one fixed member without extracting any paths or executing artifact code.
+                    const json = execFileSync('unzip', ['-p', zip, 'benchmark.json'],
+                      {encoding: 'utf8', maxBuffer: 2 * 1024 * 1024, timeout: 10000});
+                    table = renderReport(JSON.parse(json));
+                  } finally {
+                    fs.rmSync(zip, {force: true});
+                  }
+                }
+              } catch (error) {
+                core.warning('Benchmark artifact missing or invalid; reporting unavailable results.');
+              }
+              const url = `${context.serverUrl}/${owner}/${repo}/actions/runs/${run.id}`;
+              const conclusion = ['success', 'failure', 'cancelled', 'timed_out'].includes(run.conclusion)
+                ? run.conclusion : 'incomplete';
+              const body = `${marker}\n## Benchmark comparison\n\nCommit: \`${run.head_sha.slice(0, 12)}\` · [Run ${run.id}](${url}) · ${conclusion}\n\n${table}`;
+              for (const pr of pulls) {
+                // A new push may have arrived while downloading the artifact.
+                const {data: current} = await github.rest.pulls.get({owner, repo, pull_number: pr.number});
+                if (current.state !== 'open' || current.head.sha !== run.head_sha) continue;
+                const comments = await github.paginate(github.rest.issues.listComments,
+                  {owner, repo, issue_number: pr.number, per_page: 100});
+                const existing = comments.find(c => c.user?.login === 'github-actions[bot]' &&
+                  c.body?.startsWith(marker));
+                if (existing) {
+                  const previous = existing.body.match(/\/actions\/runs\/(\d+)/);
+                  if (previous && Number(previous[1]) > run.id) continue;
+                  await github.rest.issues.updateComment({owner, repo, comment_id: existing.id, body});
+                } else {
+                  await github.rest.issues.createComment({owner, repo, issue_number: pr.number, body});
+                }
+              }
+            }
+
+            await publish({github, context, core});

@@ -7,12 +7,14 @@ on:
       - "lib/**"
       - "pyproject.toml"
       - "tests/**"
+      - "scripts/benchmark.py"
   pull_request:
     paths:
       - ".github/workflows/tests.yml"
       - "lib/**"
       - "pyproject.toml"
       - "tests/**"
+      - "scripts/benchmark.py"
 
 jobs:
   test:

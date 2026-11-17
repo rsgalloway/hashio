@@ -1,0 +1,69 @@
+name: Benchmarks
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmarks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    name: Benchmark comparison
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out candidate
+        uses: actions/checkout@v4
+        with:
+          path: candidate
+
+      - name: Check out baseline
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha || 'master' }}
+          path: baseline
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Test benchmark comment rendering
+        run: node --test candidate/tests/test_benchmark_comment.cjs
+
+      - name: Install each checkout in its own environment
+        run: |
+          python -m venv base-env
+          python -m venv candidate-env
+          base-env/bin/python -m pip install ./baseline
+          candidate-env/bin/python -m pip install ./candidate
+
+      - name: Compare base and candidate
+        run: |
+          candidate-env/bin/python candidate/scripts/benchmark.py \
+            --baseline baseline --baseline-python base-env/bin/python \
+            --candidate candidate --candidate-python candidate-env/bin/python \
+            --json benchmark.json > benchmark.md
+
+      - name: Write summary
+        if: always()
+        run: |
+          if [ -s benchmark.md ]; then
+            cat benchmark.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Benchmark did not finish; inspect the job logs.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            benchmark.json
+            benchmark.md
+          if-no-files-found: warn
