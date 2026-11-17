@@ -187,6 +187,8 @@ class HashWorker:
         self.start = start or os.getcwd()
         self.exporter = get_exporter(outfile)
         self.queue = Queue()  # task queue
+        # Workers must not time out before run() submits the initial scan.
+        self.started = Event()
         self.pool = Pool(self.procs, HashWorker.main, (self,))
         self.done = Event()
 
@@ -486,6 +488,7 @@ class HashWorker:
         """Runs the worker."""
         self.start_time = time.time()
         self.add_to_queue({"task": "search_paths", "paths": self.paths})
+        self.started.set()
 
         try:
             self.pool.close()
@@ -531,6 +534,7 @@ class HashWorker:
     @staticmethod
     def main(worker):
         """Worker function that walks folders and adds data to the queue."""
+        worker.started.wait()
         while True:
             try:
                 data = worker.queue.get(True, timeout=WAIT_TIME)

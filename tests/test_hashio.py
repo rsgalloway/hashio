@@ -670,6 +670,7 @@ class TestShutdown(unittest.TestCase):
         worker.start_time = 0.0
         worker.path = "dummy"
         worker.done = threading.Event()
+        worker.started = threading.Event()
         worker.paths = [worker.path]
         worker.add_to_queue = lambda data: None
 
